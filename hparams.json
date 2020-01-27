@@ -1,0 +1,29 @@
+{
+    "train_dir": "training/30",
+    "test_dir": "testing/",
+
+    "learning_rate": 0.001,
+    "epochs": 10,
+    "batch_size": 5,
+    "batch_size_test": 5,
+    "shuffle_size": 1,
+
+    "NUM_AMINO_ACIDS": 20,
+    "dihedral_dim": 3,
+    "max_sequence_length": 500,
+
+
+    "one_hot_embedding": true,
+    "embedding_dim": 10,
+    "bidirectional": false,
+    "use_evolutionary": false,
+    "rnn_units": 32,
+
+    "autoregressive_unit": 64,
+    "num_mixtures": 5,
+
+
+    "use_tfp": false
+
+
+}
