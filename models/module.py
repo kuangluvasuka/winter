@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
+from models.mixture import gaussian_mixture_sample_fn
 
 
 # TODO: modify all modules using lazy building?
@@ -110,7 +111,9 @@ class RNade(Layer):
       self.b_pi = tf.Variable(tf.zeros([seq_length, 1, num_mixtures]), name='b_pi')
 
     self._act = act
-    self.act = act
+    self._sample_fn = gaussian_mixture_sample_fn(out_dim=dihedral_dim,
+                                                 num_mix=num_mixtures,
+                                                 use_tfp=False)
 
   #def _init_net(self, ):
   #  """Self implementation of lazy building mechanism, or rewrite Layer's build() method."""
@@ -144,6 +147,9 @@ class RNade(Layer):
     """
 
     batch_size, time_steps, _ = tf.shape(x)
+
+    # conditional nade
+    # TODO: is there any other ways to combine x and z?
     if self.concat:
       x = tf.transpose(tf.concat([x, z], axis=-1), perm=[1, 0, 2])
     else:
@@ -169,22 +175,32 @@ class RNade(Layer):
       - z: [B, L, condition_dim]
 
     Returns:
-      - xs: samples
+      - samples: [B, L, num_dihedrals]
     """
 
     batch_size, time_steps, _ = tf.shape(z)
-
-    xs = []
+    z = tf.transpose(z, perm=[1, 0, 2])
+    samples = []
     a = tf.tile(self.b_enc, [batch_size, 1])
 
     for i in tf.range(time_steps):
+      tf.print(i)
+      #tf.print(a)
       h_mu, h_sigma, h_pi = self._get_mixture_coeff(i, a)
-      s_i = ...
+      s = self._sample_fn(h_mu, h_sigma, h_pi)          # [B, 3]
 
-      xs.append(s_i)
+      # conditional nade
+      # TODO: is there any other ways to combine s and z?
+      if self.concat:
+        s_z = tf.concat([s, z[i]], axis=-1)
+      else:
+        pass
 
-    xs = tf.transpose(tf.stack(xs), perm=[1, 0, 2])
-    return xs
+      a = a + tf.matmul(s_z, self.W_enc[i])
+      samples.append(s)
+
+    samples = tf.transpose(tf.stack(samples), perm=[1, 0, 2])
+    return samples
 
   def _get_mixture_coeff(self, i, a_i):
     """ Compute

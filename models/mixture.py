@@ -85,8 +85,49 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
     return mixture_loss
 
 
-def gaussian_mixture_sample_fn(y_hat):
+def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_gauss=-7.0):
   """
   https://colab.research.google.com/github/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding_TensorFlow_Distributions_Shapes.ipynb
   """
 
+
+  def mixture_sampling(mean, logit_std, logit_pi):
+    """
+    Args:
+      - mean: [B, out_dim * num_mix]
+      - logit_std: [B, out_dim * num_mix]
+      - logit_pi: [B, num_mix]
+
+    Returns:
+      - sample: [B, out_dim]
+    """
+
+    mean = tf.reshape(mean, [-1, num_mix, out_dim])
+    logit_std = tf.reshape(tf.maximum(logit_std, log_scale_min_gauss), [-1, num_mix, out_dim])
+    logit_pi = tf.reshape(logit_pi, [-1, num_mix])
+    #tf.print(mean)
+    #tf.print(tf.shape(logit_std))
+    #tf.print(logit_pi)
+
+    use_tfp = True
+    if use_tfp:
+      means = tf.unstack(mean, axis=1)
+      logit_stds = tf.unstack(logit_std, axis=1)
+
+      mixture = tfd.Mixture(
+          cat=tfd.Categorical(logits=logit_pi),
+          components=[tfd.MultivariateNormalDiag(
+              loc=loc,
+              scale_diag=tf.math.softplus(scale)) for loc, scale in zip(means, logit_stds)])
+
+      tf.print(mixture.mean())
+      sample = mixture.sample()
+
+    else:
+      pass
+
+
+    return sample
+
+  with tf.name_scope('gaussian_mixture_sample'):
+    return mixture_sampling
