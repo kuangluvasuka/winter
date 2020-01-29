@@ -4,6 +4,14 @@ import tensorflow as tf
 from models.mixture import gaussian_mixture_loss_fn
 
 
+def construct_inputs(primary, primary_mask, evolutionary, angle):
+  inputs = {'primary': primary,
+            'primary_mask': primary_mask,
+            'evolutionary': evolutionary,
+            'angle': angle}
+  return inputs
+
+
 def train(model, feeder, hparams, saver=None):
 
   loss_fn = gaussian_mixture_loss_fn(out_dim=hparams.dihedral_dim,
@@ -18,12 +26,9 @@ def train(model, feeder, hparams, saver=None):
 
     avg_loss = []
 
-    for (id_, primary, evolutionary, tertiary, angle, pri_mask, ter_mask, slen) in feeder.test:
+    for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.test:
       global_step += 1
-      if hparams.use_evolutionary:
-        inputs = [primary, pri_mask, angle, evolutionary]
-      else:
-        inputs = [primary, pri_mask, angle]
+      inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
 
       with tf.GradientTape() as tape:
         y_hat = model(inputs)
@@ -40,10 +45,7 @@ def train(model, feeder, hparams, saver=None):
 
     eval_loss = []
     for (id_, primary, evolutionary, tertiary, angle, pri_mask, ter_mask, slen) in feeder.test:
-      if hparams.use_evolutionary:
-        inputs = [primary, pri_mask, angle, evolutionary]
-      else:
-        inputs = [primary, pri_mask, angle]
+      inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
 
       y_hat = model(inputs)
       loss = loss_fn(angle, y_hat, ter_mask)

@@ -44,24 +44,23 @@ class Pronet(tf.keras.Model):
                         num_mixtures=hp.num_mixtures)
 
 
-  def call(self, inputs, sampling=False):
+  def call(self, inputs, is_sampling=False):
     """
     Args:
-      - prim_seq: primary sequence
-      - pri_mask: mask for primary sequence
-      - angle: dihedral angles, shape=[B, L, dihedral_dim]
+      - inputs: A dict containing
+        1) prim_seq: primary sequence
+        2) prim_mask: mask for primary sequence
+        3) evol: evolutionary sequence, shape=[B, L, NUM_EVO_ENTRIES=21]
+        4) angle (None if is_sampling=True): dihedral angles, shape=[B, L, dihedral_dim]
+
+    Returns:
+      - y_hats: logits
     """
 
-    prim_seq, pri_mask, angles = inputs[:3]
-    emb = self._embedding(prim_seq)
+    emb = self._embedding(inputs['primary'])
     if self._hp.use_evolutionary:
-      evol = inputs[3]
-      emb = tf.concat([emb, evol], axis=-1)
-    latent_z = self._recurrent(emb, pri_mask)
-    y_hats = self._rnade(angles, latent_z)
+      emb = tf.concat([emb, inputs['evolutionary']], axis=-1)
+    latent_z = self._recurrent(emb, inputs['primary_mask'])
+    y_hats = self._rnade(inputs['angle'], latent_z, is_sampling)
 
     return y_hats
-
-  def sample(self, ):
-    pass
-

@@ -34,7 +34,7 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
     mask = tf.reshape(mask, [-1])                                               # [B*L]
     mean = tf.reshape(mean, [-1, num_mix, out_dim])                             # [B*L, num_mix, out_dim]
     logit_std = tf.reshape(
-        tf.maximum(logit_std, log_scale_min_gauss), [-1, num_mix, out_dim])     # [B*L, num_mix, out_dim] 
+        tf.maximum(logit_std, log_scale_min_gauss), [-1, num_mix, out_dim])     # [B*L, num_mix, out_dim]
     logit_pi = tf.reshape(logit_pi, [-1, num_mix])                              # [B*L, num_mix]
 
     if use_tfp:
@@ -61,7 +61,7 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
       #    Here, we distributed the term k*ln(2PI) to each of the k dimensions inside the
       #    tf.reduce_sum, thus each dimension should only be added with LOGTWOPI in stead of K*LOGTWOPI
 
-      # 2. Use softplus() to rescale log_sigma/logit_std as is in above tfp branch?......
+      # 2. Use softplus() to rescale log_sigma/logit_std so as to keep it the same as the above tfp branch?......
       #std = tf.math.softplus(logit_std)
       #logit_std = tf.math.log(std)
 

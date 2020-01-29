@@ -109,43 +109,45 @@ class RNade(Layer):
       self.V_pi = tf.Variable(tf.random.normal([seq_length, hidden_dim, num_mixtures]), name='v_pi')
       self.b_pi = tf.Variable(tf.zeros([seq_length, 1, num_mixtures]), name='b_pi')
 
+    self._act = act
     self.act = act
 
   #def _init_net(self, ):
   #  """Self implementation of lazy building mechanism, or rewrite Layer's build() method."""
   #  pass
 
-  def call(self, inputs, z, sampling=False):
-    if sampling:
-      assert (inputs is None), "No input dihedrals for sampling"
+  def call(self, x, z, is_sampling=False):
+    if is_sampling:
+      assert (x is None), "No input dihedrals for sampling"
       return self._sample(z)
     else:
-      return self._cal_prob(inputs, z)
+      return self._cal_prob(x, z)
 
-  def _cal_prob(self, inputs, z):
+  def _cal_prob(self, x, z):
     """
     Args:
-      - inputs: Dihedral angles, shape=[B, L, num_dihedrals]
+      - x: Dihedral angles, shape=[B, L, num_dihedrals]
       - z: Conditional vectors, shape=[B, L, condition_dim]
 
     Returns:
-      - logit_mean: The logit means of mixtures at each time steps, shape=[B, L, out_dim * num_mix]
-      - logit_std: The logit stddevs of mixtures, shape=[B, L, out_dim * num_mix].
-      - logit_pi: The logit probability of mixtures, shape=[B, L, num_mix]
+      - logits: A triplet containing
+        1) logit_mean: The logit means of mixtures at each time steps, shape=[B, L, out_dim * num_mix]
+        2) logit_std: The logit stddevs of mixtures, shape=[B, L, out_dim * num_mix].
+        3) logit_pi: The logit probability of mixtures, shape=[B, L, num_mix]
 
       NOTE:
         - logit_mean is the mean of gaussians: mean = logit_mean. Prefixing with 'logit' just to
               keep the naming constant.
         - logit_std is not the final standard deviation of gaussians: stddev = tf.exp(logit_std)
+              or stddev = tf.math.softplus(logit_std)
         - logit_pi is the unnormalized log probability of mixtures, where pi = tf.softmax(logit_pi)
     """
 
-    batch_size, time_steps, _ = tf.shape(inputs)
+    batch_size, time_steps, _ = tf.shape(x)
     if self.concat:
-      x = tf.transpose(tf.concat([inputs, z], axis=2), perm=[1, 0, 2])
-    # TODO: else
+      x = tf.transpose(tf.concat([x, z], axis=-1), perm=[1, 0, 2])
     else:
-      x = tf.transpose(inputs, perm=[1, 0, 2])
+      x = tf.transpose(x, perm=[1, 0, 2])
 
     # init a_0
     a = tf.tile(self.b_enc, [batch_size, 1])
@@ -196,15 +198,9 @@ class RNade(Layer):
       - h_pi: mixing fractions, shape=[B, num_mix]
     """
 
-    h = self.act(a_i)
+    h = self._act(a_i)
     h_mu = tf.matmul(h, self.V_mu[i]) + self.b_mu[i]
     h_sigma = tf.matmul(h, self.V_sigma[i]) + self.b_sigma[i]
     h_pi = tf.matmul(h, self.V_pi[i]) + self.b_pi[i]
 
     return h_mu, h_sigma, h_pi
-
-
-
-
-
-
