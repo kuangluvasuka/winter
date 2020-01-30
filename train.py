@@ -44,7 +44,7 @@ def train(model, feeder, hparams, saver=None):
 
 
     eval_loss = []
-    for (id_, primary, evolutionary, tertiary, angle, pri_mask, ter_mask, slen) in feeder.test:
+    for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.test:
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
 
       y_hat = model(inputs)
