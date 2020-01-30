@@ -26,7 +26,7 @@ def train(model, feeder, hparams, saver=None):
 
     avg_loss = []
 
-    for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.test:
+    for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.train:
       global_step += 1
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
 
