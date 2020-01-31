@@ -120,7 +120,7 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
               loc=loc,
               scale_diag=tf.math.softplus(scale)) for loc, scale in zip(means, logit_stds)])
 
-      tf.print(mixture.mean())
+      #tf.print(mixture.mean())
       sample = mixture.sample()
 
     else:

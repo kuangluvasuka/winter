@@ -93,6 +93,10 @@ class RNade(Layer):
     """
     super().__init__(name=name)
 
+    self.rescaling = tf.Variable(
+        [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)],
+        trainable=False, name='rescaling_factor')
+
     # TODO: concat or merge?
     self.concat = True
     if self.concat:
@@ -162,7 +166,7 @@ class RNade(Layer):
     for i in tf.range(time_steps):
       h_mu, h_sigma, h_pi = self._get_mixture_coeff(i, a)
       logits.append(tf.concat([h_mu, h_sigma, h_pi], axis=1))
-      a = a + tf.matmul(x[i], self.W_enc[i])
+      a = self.rescaling[i+1] * (a / self.rescaling[i] + tf.matmul(x[i], self.W_enc[i]))
 
     # back to batch-major
     logits = tf.transpose(tf.stack(logits), perm=[1, 0, 2])
@@ -184,7 +188,7 @@ class RNade(Layer):
     a = tf.tile(self.b_enc, [batch_size, 1])
 
     for i in tf.range(time_steps):
-      tf.print(i)
+      #tf.print(i)
       #tf.print(a)
       h_mu, h_sigma, h_pi = self._get_mixture_coeff(i, a)
       s = self._sample_fn(h_mu, h_sigma, h_pi)          # [B, 3]
@@ -196,7 +200,7 @@ class RNade(Layer):
       else:
         pass
 
-      a = a + tf.matmul(s_z, self.W_enc[i])
+      a = self.rescaling[i+1] * (a / self.rescaling[i] + tf.matmul(s_z, self.W_enc[i]))
       samples.append(s)
 
     samples = tf.transpose(tf.stack(samples), perm=[1, 0, 2])

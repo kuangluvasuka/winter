@@ -37,8 +37,8 @@ def train(model, feeder, hparams, saver=None):
 
       grads = tape.gradient(loss, model.trainable_variables)
       optimizer.apply_gradients(zip(grads, model.trainable_variables))
-      if global_step % 100 == 0:
-        print("Loss at global step %d: %f" % (global_step, loss))
+      #if global_step % 1000 == 0:
+      #  print("Loss at global step %d: %f" % (global_step, loss))
 
     print("========Loss at epoch %d: %f" % (epoch, np.mean(avg_loss)))
 
