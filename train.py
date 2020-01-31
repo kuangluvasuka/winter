@@ -26,6 +26,7 @@ def train(model, feeder, hparams, saver=None):
 
     avg_loss = []
 
+    start = time.time()
     for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.train:
       global_step += 1
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
@@ -40,9 +41,6 @@ def train(model, feeder, hparams, saver=None):
       #if global_step % 1000 == 0:
       #  print("Loss at global step %d: %f" % (global_step, loss))
 
-    print("========Loss at epoch %d: %f" % (epoch, np.mean(avg_loss)))
-
-
     eval_loss = []
     for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.test:
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
@@ -51,6 +49,7 @@ def train(model, feeder, hparams, saver=None):
       loss = loss_fn(angle, y_hat, ter_mask)
       eval_loss.append(loss)
 
-    print("~~~~~~~~Eval loss at epoch %d: %f" % (epoch, np.mean(eval_loss)))
+    print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
+        epoch + 1, np.mean(avg_loss), time.time() - start, np.mean(eval_loss)))
 
 
