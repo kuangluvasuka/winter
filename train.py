@@ -13,7 +13,7 @@ def construct_inputs(primary, primary_mask, evolutionary, angle):
   return inputs
 
 
-def train(model, feeder, hparams, saver=None):
+def train(args, model, feeder, hparams):
 
   loss_fn = gaussian_mixture_loss_fn(out_dim=hparams.dihedral_dim,
                                      num_mix=hparams.num_mixtures,
@@ -21,15 +21,22 @@ def train(model, feeder, hparams, saver=None):
 
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
 
-  global_step = 0
+  ckpt = tf.train.Checkpoint(step=tf.Variable(1), model=model, optimizer=optimizer)
+  manager = tf.train.CheckpointManager(ckpt, args.ckpt_dir, max_to_keep=3)
+  ckpt.restore(manager.latest_checkpoint)
+  if manager.latest_checkpoint:
+    print("Restored from {}".format(manager.latest_checkpoint))
+  else:
+    print("Initializing from scratch.")
 
-  for epoch in range(hparams.epochs):
+
+  for epoch in range(1, hparams.epochs + 1):
 
     avg_loss = []
 
     start = time.time()
     for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.train:
-      global_step += 1
+      ckpt.step.assign_add(1)
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
 
       with tf.GradientTape() as tape:
@@ -39,8 +46,6 @@ def train(model, feeder, hparams, saver=None):
 
       grads = tape.gradient(loss, model.trainable_variables)
       optimizer.apply_gradients(zip(grads, model.trainable_variables))
-      #if global_step % 1000 == 0:
-      #  print("Loss at global step %d: %f" % (global_step, loss))
 
     eval_loss = []
     for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.test:
@@ -51,6 +56,9 @@ def train(model, feeder, hparams, saver=None):
       eval_loss.append(loss)
 
     print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
-        epoch + 1, np.mean(avg_loss), time.time() - start, np.mean(eval_loss)))
+        epoch, np.mean(avg_loss), time.time() - start, np.mean(eval_loss)))
 
+    if epoch % args.ckpt_step == 0:
+      save_path = manager.save()
+      print("Saved checkpoint for epoch {}: {}".format(epoch, save_path))
 
