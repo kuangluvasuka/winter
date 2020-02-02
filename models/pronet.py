@@ -7,12 +7,10 @@ class Pronet(tf.keras.Model):
   """
 
   """
-
   def __init__(self, hparams):
     super().__init__()
 
     self._hp = hp = hparams
-
     # use non-trainable, one-hot encoding
     # - decided not to use 'mask_zero' here, will pass 'mask' to rnn layer explicitly
     if hp.one_hot_embedding:
@@ -43,7 +41,6 @@ class Pronet(tf.keras.Model):
                         dihedral_dim=hp.dihedral_dim,
                         num_mixtures=hp.num_mixtures)
 
-
   def call(self, inputs, is_sampling=False):
     """
     Args:
@@ -56,7 +53,6 @@ class Pronet(tf.keras.Model):
     Returns:
       - y_hats: logits
     """
-
     emb = self._embedding(inputs['primary'])
     if self._hp.use_evolutionary:
       emb = tf.concat([emb, inputs['evolutionary']], axis=-1)

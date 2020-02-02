@@ -24,7 +24,6 @@ def _int64_feature(value):
 
 def _compose_new_example(id_, prim, evol, tert, angl, mask):
   """ Construst a new protein dict, which includes the calculated angular data. """
-
   context_dict = {'id': _bytes_feature(id_)}
   feature_dict = {
       'primary': tf.train.FeatureList(feature=[_int64_feature([aa]) for aa in prim]),
@@ -52,19 +51,15 @@ def process_file(datadir, outfname='processed.tfrecord'):
             but in many research projects we see that dihedral angles are more essential in
             protein structure prediction. So this function will add the missing angles and wrap
             them all in a new tfrecord.
-
       NOTE 2: The primary sequence in the original ProteinNet is an array of integers in
               range of [0, 19], each of which represents one of the 20 amino acids. Here we
               reset the integer to [1, 20], leaving '0' for later batch padding.
   """
-
   processed_file = os.path.join(datadir, outfname)
   path = os.path.join(datadir, '[0-9]*')
   raw_files = sorted(glob.glob(path), key=lambda x: int(os.path.split(x)[-1]))
-
   data_raw = tf.data.TFRecordDataset(raw_files)
   writer = tf.io.TFRecordWriter(processed_file)
-
   parsed_sequence = data_raw.map(_parse_func)
 
   # add dihedral angles and write to new tfrecord
@@ -76,7 +71,6 @@ def process_file(datadir, outfname='processed.tfrecord'):
     tert = sequence['tertiary'].numpy()
     mask = sequence['mask'].numpy()
     angl = cartesian_coords_to_dihedral_angles(tert)
-
     new_seq = _compose_new_example(id_, prim, evol, tert, angl, mask)
     writer.write(new_seq.SerializeToString())
 

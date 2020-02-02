@@ -1,4 +1,3 @@
-import os
 import tensorflow as tf
 
 
@@ -21,18 +20,11 @@ class Feeder():
   """
     Loads minibatch of data from preprocessed TFRecords.
   """
-
-  def __init__(self, datadir, hparams):
-
+  def __init__(self, train_set, test_set, hparams):
     self._max_sequence_length = hparams.max_sequence_length
-
-    train_file = os.path.join(datadir, hparams.train_dir, 'processed.tfrecord')
-    test_file = os.path.join(datadir, hparams.test_dir, 'processed.tfrecord')
-
-    self.train = self._construct_dataloader(train_file, hparams.batch_size, hparams.shuffle_size)
-    self.test = self._construct_dataloader(test_file, hparams.batch_size_test, hparams.shuffle_size)
+    self.train = self._construct_dataloader(train_set, hparams.batch_size, hparams.shuffle_size)
+    self.test = self._construct_dataloader(test_set, hparams.batch_size_test, hparams.shuffle_size)
     # self.val = ...
-
 
   def _construct_dataloader(self, fname, batch_size, shuffle_size):
     ### helper functions ###
@@ -40,8 +32,7 @@ class Feeder():
       context, features = tf.io.parse_single_sequence_example(
           sample,
           context_features=_context_feature_description,
-          sequence_features=_sequence_feature_description
-      )
+          sequence_features=_sequence_feature_description)
 
       id_ = context['id'][0]
       primary = tf.cast(features['primary'][:, 0], tf.int32)
@@ -61,7 +52,6 @@ class Feeder():
       #    mask as input in Tensorflow's Windows (or maybe GPU) version.
       pri_length = tf.size(primary)
       pri_mask = tf.cast(tf.ones(pri_length), dtype=tf.bool)
-
 
       # Generate tertiary masking matrix. If mask is missing then assume all residues are present
       # mask = tf.cond(tf.not_equal(tf.size(mask), 0), lambda: mask, lambda: tf.ones([pri_length - num_edge_residues]))

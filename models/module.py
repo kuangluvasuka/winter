@@ -18,7 +18,6 @@ class Embedding(Layer):
       m = tf.random.normal([vocab_size, embedding_dim], stddev=std, dtype=tf.float32)
     else:
       raise ValueError("Invalid 'init' argument: %s" % initializer)
-
     self._embedding_matrix = tf.Variable(m, trainable=trainable, name=name)
 
   def call(self, x):
@@ -62,15 +61,11 @@ class Recurrent(Layer):
       forward_cell = rnn_cls(units, return_sequences=True)
       backward_cell = rnn_cls(units, return_sequences=True, go_backwards=True)
       self.layer = tf.keras.layers.Bidirectional(forward_cell, backward_cell, input_shape=(None, in_features))
-
     else:
       self.layer = rnn_cls(units, return_sequences=True, input_shape=(None, in_features))
 
   def call(self, x, mask, evol=None):
-    output = self.layer(x, mask=mask)
-
-    return output
-
+    return self.layer(x, mask=mask)
 
 
 class RNade(Layer):
@@ -149,7 +144,6 @@ class RNade(Layer):
               or stddev = tf.math.softplus(logit_std)
         - logit_pi is the unnormalized log probability of mixtures, where pi = tf.softmax(logit_pi)
     """
-
     batch_size, time_steps, _ = tf.shape(x)
 
     # conditional nade
@@ -181,7 +175,6 @@ class RNade(Layer):
     Returns:
       - samples: [B, L, num_dihedrals]
     """
-
     batch_size, time_steps, _ = tf.shape(z)
     z = tf.transpose(z, perm=[1, 0, 2])
     samples = []
@@ -217,7 +210,6 @@ class RNade(Layer):
       - h_sigma: stddev of gaussians, shape=[B, out_dim * num_mix]
       - h_pi: mixing fractions, shape=[B, num_mix]
     """
-
     h = self._act(a_i)
     h_mu = tf.matmul(h, self.V_mu[i]) + self.b_mu[i]
     h_sigma = tf.matmul(h, self.V_sigma[i]) + self.b_sigma[i]

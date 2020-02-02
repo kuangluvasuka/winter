@@ -6,22 +6,20 @@ from models.mixture import gaussian_mixture_loss_fn
 
 
 def construct_inputs(primary, primary_mask, evolutionary, angle):
-  inputs = {'primary': primary,
-            'primary_mask': primary_mask,
-            'evolutionary': evolutionary,
-            'angle': angle}
-  return inputs
+  return {'primary': primary,
+          'primary_mask': primary_mask,
+          'evolutionary': evolutionary,
+          'angle': angle}
 
 
 def train(args, model, feeder, hparams):
-
   loss_fn = gaussian_mixture_loss_fn(out_dim=hparams.dihedral_dim,
                                      num_mix=hparams.num_mixtures,
                                      use_tfp=hparams.use_tfp)
-
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
 
-  ckpt = tf.train.Checkpoint(step=tf.Variable(1), model=model, optimizer=optimizer)
+  #TODO: move ckpt to function
+  ckpt = tf.train.Checkpoint(epoch=tf.Variable(1), model=model, optimizer=optimizer)
   manager = tf.train.CheckpointManager(ckpt, args.ckpt_dir, max_to_keep=3)
   ckpt.restore(manager.latest_checkpoint)
   if manager.latest_checkpoint:
@@ -29,16 +27,12 @@ def train(args, model, feeder, hparams):
   else:
     print("Initializing from scratch.")
 
-
-  for epoch in range(1, hparams.epochs + 1):
-
+  for epoch in range(int(ckpt.epoch), hparams.epochs + 1):
+    ckpt.epoch.assign_add(1)
     avg_loss = []
-
     start = time.time()
     for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.train:
-      ckpt.step.assign_add(1)
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
-
       with tf.GradientTape() as tape:
         y_hat = model(inputs)
         loss = loss_fn(angle, y_hat, ter_mask)
@@ -50,7 +44,6 @@ def train(args, model, feeder, hparams):
     eval_loss = []
     for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.test:
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
-
       y_hat = model(inputs)
       loss = loss_fn(angle, y_hat, ter_mask)
       eval_loss.append(loss)
