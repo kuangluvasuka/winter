@@ -39,7 +39,8 @@ class Pronet(tf.keras.Model):
                         condition_dim=hp.rnn_units,
                         seq_length=hp.max_sequence_length,
                         dihedral_dim=hp.dihedral_dim,
-                        num_mixtures=hp.num_mixtures)
+                        num_mixtures=hp.num_mixtures,
+                        use_tfp=hp.use_tfp)
 
   def call(self, inputs, is_sampling=False):
     """

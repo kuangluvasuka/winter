@@ -76,7 +76,7 @@ class RNade(Layer):
      https://arxiv.org/abs/1306.0186
   """
   def __init__(self, hidden_dim, condition_dim=32, seq_length=500, dihedral_dim=3,
-               num_mixtures=5, act=tf.nn.relu, name='real_nade'):
+               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='real_nade'):
     """
     Args:
       - hidden_dim: Number of hidden units in NADE
@@ -112,7 +112,7 @@ class RNade(Layer):
     self._act = act
     self._sample_fn = gaussian_mixture_sample_fn(out_dim=dihedral_dim,
                                                  num_mix=num_mixtures,
-                                                 use_tfp=False)
+                                                 use_tfp=use_tfp)
 
   #def _init_net(self, ):
   #  """Self implementation of lazy building mechanism, or rewrite Layer's build() method."""

@@ -19,7 +19,7 @@ def train(args, model, feeder, hparams):
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
 
   #TODO: move ckpt to function
-  ckpt = tf.train.Checkpoint(epoch=tf.Variable(1), model=model, optimizer=optimizer)
+  ckpt = tf.train.Checkpoint(epoch=tf.Variable(1), step=tf.Variable(1), model=model, optimizer=optimizer)
   manager = tf.train.CheckpointManager(ckpt, args.ckpt_dir, max_to_keep=3)
   ckpt.restore(manager.latest_checkpoint)
   if manager.latest_checkpoint:
@@ -32,6 +32,7 @@ def train(args, model, feeder, hparams):
     avg_loss = []
     start = time.time()
     for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.train:
+      ckpt.step.assign_add(1)
       inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
       with tf.GradientTape() as tape:
         y_hat = model(inputs)
@@ -51,7 +52,7 @@ def train(args, model, feeder, hparams):
     print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
         epoch, np.mean(avg_loss), time.time() - start, np.mean(eval_loss)))
 
-    if epoch % args.ckpt_step == 0:
+    if epoch % args.ckpt_inteval == 0:
       save_path = manager.save()
       print("Saved checkpoint for epoch {}: {}".format(epoch, save_path))
 

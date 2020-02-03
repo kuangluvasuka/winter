@@ -101,7 +101,7 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
     #tf.print(tf.shape(logit_std))
     #tf.print(logit_pi)
 
-    use_tfp = True
+    #use_tfp = True
     if use_tfp:
       means = tf.unstack(mean, axis=1)
       logit_stds = tf.unstack(logit_std, axis=1)
@@ -115,9 +115,19 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
       #tf.print(mixture.mean())
       sample = mixture.sample()
     else:
-      pass
+      # sample mixture distribution from softmax-ed pi
+      # see https://lips.cs.princeton.edu/the-gumbel-max-trick-for-discrete-distributions/
+      batch_size, _ = tf.shape(logit_pi)
+      u = tf.random.uniform(tf.shape(logit_pi), minval=1e-5, maxval=1. - 1e-5)
+      argmax = tf.argmax(logit_pi - tf.math.log(-tf.math.log(u)), axis=-1)
+      onehot = tf.expand_dims(tf.one_hot(argmax, depth=num_mix, dtype=tf.float32), axis=-1)   # [B, num_mix, 1]
+      # sample from selected gaussian
+      u = tf.random.uniform([batch_size, out_dim], minval=1e-5, maxval=1. - 1e-5)
+      mean = tf.reduce_sum(tf.multiply(mean, onehot), axis=1)                                 # [B, out_dim]
+      logit_std = tf.reduce_sum(tf.multiply(logit_std, onehot), axis=1)
+      sample = mean + tf.exp(logit_std) * u
 
-
+    # clip sample to [-pi, pi]?
     return sample
 
   with tf.name_scope('gaussian_mixture_sample'):
