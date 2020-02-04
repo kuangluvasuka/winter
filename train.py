@@ -47,7 +47,7 @@ def train(args, model, feeder, hparams):
     for data_dict in feeder.train:
       ckpt.step.assign_add(1)
       loss = train_step(model, data_dict, loss_fn, optimizer)
-    avg_loss.append(loss)
+      avg_loss.append(loss)
 
     eval_loss = []
     for data_dict in feeder.test:
