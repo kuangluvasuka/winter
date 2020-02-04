@@ -4,6 +4,5 @@ __pycache__
 *.ipynb
 .ipynb_checkpoints/*
 data/*
-!data/.gitkeep
 checkpoint/*
-!checkpoint/.gitkeep
+tf_logs/*

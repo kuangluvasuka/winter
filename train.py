@@ -1,7 +1,9 @@
+import os
 import time
 import numpy as np
 import tensorflow as tf
 
+from utils import time_string
 from models.mixture import gaussian_mixture_loss_fn
 
 
@@ -39,25 +41,33 @@ def train(args, model, feeder, hparams):
                                      use_tfp=hparams.use_tfp)
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
   ckpt, manager = init_checkpoint(args, model, optimizer)
+  logdir = os.path.join(args.summary_dir, time_string())
+  train_summary_writer = tf.summary.create_file_writer(os.path.join(logdir, 'train'))
+  eval_summary_writer = tf.summary.create_file_writer(os.path.join(logdir, 'eval'))
 
   for epoch in range(int(ckpt.epoch), hparams.epochs + 1):
     ckpt.epoch.assign_add(1)
-    avg_loss = []
+    losses = []
     start = time.time()
     for data_dict in feeder.train:
       ckpt.step.assign_add(1)
       loss = train_step(model, data_dict, loss_fn, optimizer)
-      avg_loss.append(loss)
+      losses.append(loss)
+    train_loss_average = np.mean(losses) / hparams.batch_size
+    with train_summary_writer.as_default():
+      tf.summary.scalar('loss', train_loss_average, step=epoch)
 
-    eval_loss = []
+    losses = []
     for data_dict in feeder.test:
       loss = eval_step(model, data_dict, loss_fn)
-      eval_loss.append(loss)
+      losses.append(loss)
+    eval_loss_average = np.mean(losses) / hparams.batch_size_test
+    with eval_summary_writer.as_default():
+      tf.summary.scalar('loss', eval_loss_average, step=epoch)
 
     print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
-        epoch, np.mean(avg_loss), time.time() - start, np.mean(eval_loss)))
+        epoch, train_loss_average, time.time() - start, eval_loss_average))
 
     if epoch % args.ckpt_inteval == 0:
       save_path = manager.save()
       print("Saved checkpoint for epoch {}: {}".format(epoch, save_path))
-

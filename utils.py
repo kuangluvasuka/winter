@@ -60,4 +60,4 @@ def compute_dihedral_angles(atomic_coords):
 
 
 def time_string():
-  return datetime.now().strftime('%m-%d %H:%M:%S')
+  return datetime.now().strftime("%b.%d_%H.%M")
