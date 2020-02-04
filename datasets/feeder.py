@@ -57,14 +57,17 @@ class Feeder():
       # mask = tf.cond(tf.not_equal(tf.size(mask), 0), lambda: mask, lambda: tf.ones([pri_length - num_edge_residues]))
       # ter_mask = masking_matrix(mask, name='ter_mask')
 
-      return id_, primary, evolutionary, tertiary, angular, pri_mask, ter_mask, pri_length
+      return {'id': id_, 'primary': primary, 'evolutionary': evolutionary, 'tertiary': tertiary,
+              'angle': angular, 'primary_mask': pri_mask, 'tertiary_mask': ter_mask, 'length': pri_length}
 
-    def filter_fn(*parsed):
+    def filter_fn(parsed):
       """ Predicate for filtering out protein longer than max length """
-      return parsed[-1] <= self._max_sequence_length
+      return parsed['length'] <= self._max_sequence_length
     ### helper functions end ###
 
-    padded_shapes = ([], [-1], [-1, NUM_EVO_ENTRIES], [-1, NUM_DIMENSIONS], [-1, NUM_DIMENSIONS], [-1], [-1], [])
+    padded_shapes = ({'id': [], 'primary': [-1], 'evolutionary': [-1, NUM_EVO_ENTRIES],
+                      'tertiary': [-1, NUM_DIMENSIONS], 'angle': [-1, NUM_DIMENSIONS],
+                      'primary_mask': [-1], 'tertiary_mask': [-1], 'length': []})
     loader = tf.data.TFRecordDataset(fname)
     loader = loader.map(parse_fn).filter(filter_fn).shuffle(buffer_size=shuffle_size)
     loader = loader.padded_batch(batch_size, padded_shapes=padded_shapes)

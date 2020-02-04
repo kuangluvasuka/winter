@@ -50,6 +50,7 @@ class Pronet(tf.keras.Model):
         2) prim_mask: mask for primary sequence
         3) evol: evolutionary sequence, shape=[B, L, NUM_EVO_ENTRIES=21]
         4) angle (None if is_sampling=True): dihedral angles, shape=[B, L, dihedral_dim]
+        NOTE: there are additional entries in the dict but unused here
 
     Returns:
       - y_hats: logits

@@ -5,11 +5,20 @@ import tensorflow as tf
 from models.mixture import gaussian_mixture_loss_fn
 
 
-def construct_inputs(primary, primary_mask, evolutionary, angle):
-  return {'primary': primary,
-          'primary_mask': primary_mask,
-          'evolutionary': evolutionary,
-          'angle': angle}
+#@tf.function
+def train_step(model, inputs, loss_fn, optimizer):
+  with tf.GradientTape() as tape:
+    y_hat = model(inputs)
+    loss = loss_fn(inputs['angle'], y_hat, inputs['tertiary_mask'])
+  grads = tape.gradient(loss, model.trainable_variables)
+  optimizer.apply_gradients(zip(grads, model.trainable_variables))
+  return loss
+
+
+#@tf.function
+def eval_step(model, inputs, loss_fn):
+  y_hat = model(inputs)
+  return loss_fn(inputs['angle'], y_hat, inputs['tertiary_mask'])
 
 
 def train(args, model, feeder, hparams):
@@ -31,22 +40,14 @@ def train(args, model, feeder, hparams):
     ckpt.epoch.assign_add(1)
     avg_loss = []
     start = time.time()
-    for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.train:
+    for data_dict in feeder.train:
       ckpt.step.assign_add(1)
-      inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
-      with tf.GradientTape() as tape:
-        y_hat = model(inputs)
-        loss = loss_fn(angle, y_hat, ter_mask)
-        avg_loss.append(loss)
-
-      grads = tape.gradient(loss, model.trainable_variables)
-      optimizer.apply_gradients(zip(grads, model.trainable_variables))
+      loss = train_step(model, data_dict, loss_fn, optimizer)
+    avg_loss.append(loss)
 
     eval_loss = []
-    for (id_, primary, evolutionary, tertiary, angle, prim_mask, ter_mask, slen) in feeder.test:
-      inputs = construct_inputs(primary, prim_mask, evolutionary, angle)
-      y_hat = model(inputs)
-      loss = loss_fn(angle, y_hat, ter_mask)
+    for data_dict in feeder.test:
+      loss = eval_step(model, data_dict, loss_fn)
       eval_loss.append(loss)
 
     print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
