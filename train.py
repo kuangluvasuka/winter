@@ -5,6 +5,18 @@ import tensorflow as tf
 from models.mixture import gaussian_mixture_loss_fn
 
 
+def init_checkpoint(args, model, optimizer, **kwargs):
+  checkpoint = tf.train.Checkpoint(epoch=tf.Variable(1), step=tf.Variable(1),
+                                   model=model, optimizer=optimizer)
+  manager = tf.train.CheckpointManager(checkpoint, args.ckpt_dir, max_to_keep=args.max_to_keep)
+  checkpoint.restore(manager.latest_checkpoint)
+  if manager.latest_checkpoint:
+    print("Restored from {}".format(manager.latest_checkpoint))
+  else:
+    print("Initializing from scratch.")
+  return checkpoint, manager
+
+
 #@tf.function
 def train_step(model, inputs, loss_fn, optimizer):
   with tf.GradientTape() as tape:
@@ -26,15 +38,7 @@ def train(args, model, feeder, hparams):
                                      num_mix=hparams.num_mixtures,
                                      use_tfp=hparams.use_tfp)
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
-
-  #TODO: move ckpt to function
-  ckpt = tf.train.Checkpoint(epoch=tf.Variable(1), step=tf.Variable(1), model=model, optimizer=optimizer)
-  manager = tf.train.CheckpointManager(ckpt, args.ckpt_dir, max_to_keep=3)
-  ckpt.restore(manager.latest_checkpoint)
-  if manager.latest_checkpoint:
-    print("Restored from {}".format(manager.latest_checkpoint))
-  else:
-    print("Initializing from scratch.")
+  ckpt, manager = init_checkpoint(args, model, optimizer)
 
   for epoch in range(int(ckpt.epoch), hparams.epochs + 1):
     ckpt.epoch.assign_add(1)
