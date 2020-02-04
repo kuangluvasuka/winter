@@ -7,7 +7,7 @@ from utils import time_string
 from models.mixture import gaussian_mixture_loss_fn
 
 
-def init_checkpoint(args, model, optimizer, **kwargs):
+def create_checkpoint(args, model, optimizer, **kwargs):
   checkpoint = tf.train.Checkpoint(epoch=tf.Variable(1), step=tf.Variable(1),
                                    model=model, optimizer=optimizer)
   manager = tf.train.CheckpointManager(checkpoint, args.ckpt_dir, max_to_keep=args.max_to_keep)
@@ -17,6 +17,16 @@ def init_checkpoint(args, model, optimizer, **kwargs):
   else:
     print("Initializing from scratch.")
   return checkpoint, manager
+
+
+def create_summary(summary_dir):
+  logdir = os.path.join(summary_dir, time_string())
+  train_log = os.path.join(logdir, 'train')
+  eval_log = os.path.join(logdir, 'eval')
+  os.makedirs(train_log, exist_ok=True)
+  os.makedirs(eval_log, exist_ok=True)
+  return {'train': tf.summary.create_file_writer(train_log),
+          'eval': tf.summary.create_file_writer(eval_log)}
 
 
 #@tf.function
@@ -40,10 +50,8 @@ def train(args, model, feeder, hparams):
                                      num_mix=hparams.num_mixtures,
                                      use_tfp=hparams.use_tfp)
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
-  ckpt, manager = init_checkpoint(args, model, optimizer)
-  logdir = os.path.join(args.summary_dir, time_string())
-  train_summary_writer = tf.summary.create_file_writer(os.path.join(logdir, 'train'))
-  eval_summary_writer = tf.summary.create_file_writer(os.path.join(logdir, 'eval'))
+  ckpt, manager = create_checkpoint(args, model, optimizer)
+  summary_writer = create_summary(args.summary_dir)
 
   for epoch in range(int(ckpt.epoch), hparams.epochs + 1):
     ckpt.epoch.assign_add(1)
@@ -54,7 +62,7 @@ def train(args, model, feeder, hparams):
       loss = train_step(model, data_dict, loss_fn, optimizer)
       losses.append(loss)
     train_loss_average = np.mean(losses) / hparams.batch_size
-    with train_summary_writer.as_default():
+    with summary_writer['train'].as_default():
       tf.summary.scalar('loss', train_loss_average, step=epoch)
 
     losses = []
@@ -62,7 +70,7 @@ def train(args, model, feeder, hparams):
       loss = eval_step(model, data_dict, loss_fn)
       losses.append(loss)
     eval_loss_average = np.mean(losses) / hparams.batch_size_test
-    with eval_summary_writer.as_default():
+    with summary_writer['eval'].as_default():
       tf.summary.scalar('loss', eval_loss_average, step=epoch)
 
     print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
