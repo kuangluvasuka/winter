@@ -19,14 +19,16 @@ def create_checkpoint(args, model, optimizer, **kwargs):
   return checkpoint, manager
 
 
-def create_summary(summary_dir):
+def create_summary(summary_dir, summary_off=False):
+  if summary_off:
+    return {'train': tf.summary.create_noop_writer(), 'eval': tf.summary.create_noop_writer()}
+
   logdir = os.path.join(summary_dir, time_string())
   train_log = os.path.join(logdir, 'train')
   eval_log = os.path.join(logdir, 'eval')
   os.makedirs(train_log, exist_ok=True)
   os.makedirs(eval_log, exist_ok=True)
-  return {'train': tf.summary.create_file_writer(train_log),
-          'eval': tf.summary.create_file_writer(eval_log)}
+  return {'train': tf.summary.create_file_writer(train_log), 'eval': tf.summary.create_file_writer(eval_log)}
 
 
 #@tf.function
@@ -51,27 +53,30 @@ def train(args, model, feeder, hparams):
                                      use_tfp=hparams.use_tfp)
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
   ckpt, manager = create_checkpoint(args, model, optimizer)
-  summary_writer = create_summary(args.summary_dir)
+  summary_writer = create_summary(args.summary_dir, args.summary_off)
 
   for epoch in range(int(ckpt.epoch), hparams.epochs + 1):
     ckpt.epoch.assign_add(1)
     losses = []
     start = time.time()
-    for data_dict in feeder.train:
-      ckpt.step.assign_add(1)
-      loss = train_step(model, data_dict, loss_fn, optimizer)
-      losses.append(loss)
-    train_loss_average = np.mean(losses) / hparams.batch_size
+    tf.summary.experimental.set_step(epoch)
     with summary_writer['train'].as_default():
-      tf.summary.scalar('loss', train_loss_average, step=epoch)
+      for (i, data_dict) in enumerate(feeder.train):
+        ckpt.step.assign_add(1)
+        with tf.summary.record_if(i == 0):
+          loss = train_step(model, data_dict, loss_fn, optimizer)
+        losses.append(loss)
+      train_loss_average = np.mean(losses) / hparams.batch_size
+      tf.summary.scalar('loss', train_loss_average)
 
     losses = []
-    for data_dict in feeder.test:
-      loss = eval_step(model, data_dict, loss_fn)
-      losses.append(loss)
-    eval_loss_average = np.mean(losses) / hparams.batch_size_test
     with summary_writer['eval'].as_default():
-      tf.summary.scalar('loss', eval_loss_average, step=epoch)
+      for (i, data_dict) in enumerate(feeder.test):
+        with tf.summary.record_if(i == 0):
+          loss = eval_step(model, data_dict, loss_fn)
+        losses.append(loss)
+      eval_loss_average = np.mean(losses) / hparams.batch_size_test
+      tf.summary.scalar('loss', eval_loss_average)
 
     print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
         epoch, train_loss_average, time.time() - start, eval_loss_average))
