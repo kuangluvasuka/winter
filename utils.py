@@ -26,7 +26,7 @@ def cartesian_coords_to_dihedral_angles(atomic_coords):
   Args:
     - atomic_coords: array with shape [seq_length * 3, 3]
   Returns:
-    - angles: array of radian angles in [-pi, pi] with shape [seq_length * 3, 3]
+    - angles: array of radian angles in [-pi, pi] with shape [seq_length, 3]
   """
 
   zero_tensor = 0.
