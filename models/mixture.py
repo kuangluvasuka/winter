@@ -132,3 +132,24 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
 
   with tf.name_scope('gaussian_mixture_sample'):
     return mixture_sampling
+
+
+def masked_angular_mean_absolute_error(y_true, y_pred, mask, reduce=False):
+  """
+  Args:
+    - y_true: Dihedral angle triplet (omega, phi, psi), [B, L, out_dim=3]
+    - y_pred: [B, L, out_dim]
+    - mask: [B, L]
+    - reduce: bool, whether to sum the MAE over the angle triplet
+
+  Returns:
+    - mae: mean absolute error, [B, out_dim] (or [B] if reduce=True)
+  """
+  dist = tf.math.abs(y_pred - y_true)
+  shifted = tf.math.abs(2 * PI - (dist))
+  ae = tf.math.minimum(dist, shifted)                           # [B, L, out_dim]
+  ae_masked = tf.multiply(ae, tf.expand_dims(mask, axis=-1))    # [B, L, out_dim]
+  mae = tf.math.divide_no_nan(tf.reduce_sum(ae_masked, axis=1), tf.reduce_sum(mask, axis=-1, keepdims=True))
+  if reduce:
+    return tf.reduce_sum(mae, axis=-1)
+  return mae
