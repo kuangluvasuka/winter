@@ -63,13 +63,18 @@ class Feeder():
     def filter_fn(parsed):
       """ Predicate for filtering out protein longer than max length """
       return parsed['length'] <= self._max_sequence_length
+
+    # TODO: re-consider the role of this function
+    def filter_fn2(parsed):
+      """A temporary patch to remove samples with missing values."""
+      return tf.reduce_sum(parsed['tertiary_mask']) == tf.cast(parsed['length'], dtype=tf.float32)
     ### helper functions end ###
 
     padded_shapes = ({'id': [], 'primary': [-1], 'evolutionary': [-1, NUM_EVO_ENTRIES],
                       'tertiary': [-1, NUM_DIMENSIONS], 'angle': [-1, NUM_DIMENSIONS],
                       'primary_mask': [-1], 'tertiary_mask': [-1], 'length': []})
     loader = tf.data.TFRecordDataset(fname)
-    loader = loader.map(parse_fn).filter(filter_fn).shuffle(buffer_size=shuffle_size)
+    loader = loader.map(parse_fn).filter(filter_fn).filter(filter_fn2).shuffle(buffer_size=shuffle_size)
     loader = loader.padded_batch(batch_size, padded_shapes=padded_shapes)
 
     return loader
