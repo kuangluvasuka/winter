@@ -120,7 +120,7 @@ class RNade(Layer):
 
   def call(self, x, z, is_sampling=False):
     if is_sampling:
-      assert (x is None), "No input dihedrals for sampling"
+      #assert (x is None), "No input dihedrals for sampling"
       return self._sample(z)
     else:
       return self._cal_prob(x, z)

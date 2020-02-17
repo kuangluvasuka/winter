@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 from utils import time_string
-from models.mixture import gaussian_mixture_loss_fn
+from models.mixture import gaussian_mixture_loss_fn, masked_angular_mean_absolute_error
 
 
 def create_checkpoint(args, model, optimizer, **kwargs):
@@ -63,6 +63,7 @@ def train(args, model, feeder, hparams):
     with summary_writer['train'].as_default():
       for (i, data_dict) in enumerate(feeder.train):
         ckpt.step.assign_add(1)
+        # TODO: add summary_step?
         with tf.summary.record_if(i == 0):
           loss = train_step(model, data_dict, loss_fn, optimizer)
         losses.append(loss)
@@ -70,16 +71,23 @@ def train(args, model, feeder, hparams):
       tf.summary.scalar('loss', train_loss_average)
 
     losses = []
+    metrics = []
     with summary_writer['eval'].as_default():
       for (i, data_dict) in enumerate(feeder.test):
         with tf.summary.record_if(i == 0):
           loss = eval_step(model, data_dict, loss_fn)
         losses.append(loss)
+
+        y_pred = model(data_dict, is_sampling=True)
+        mae = masked_angular_mean_absolute_error(data_dict['angle'], y_pred, data_dict['tertiary_mask'])
+        metrics.append(mae)
+
       eval_loss_average = np.mean(losses) / hparams.batch_size_test
+      eval_metric_average = np.mean(metrics, axis=0)
       tf.summary.scalar('loss', eval_loss_average)
 
-    print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f}".format(
-        epoch, train_loss_average, time.time() - start, eval_loss_average))
+    print("Epoch: {} | train loss: {:.3f} | time: {:.2f}s | eval loss: {:.3f} | angle MAE: ({:.3f}, {:.3f}, {:.3f})".format(
+        epoch, train_loss_average, time.time() - start, eval_loss_average, *eval_metric_average))
 
     if epoch % args.ckpt_inteval == 0:
       save_path = manager.save()

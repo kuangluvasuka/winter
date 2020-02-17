@@ -69,6 +69,7 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
           axis=-1)
       # get weighted of log-probability by summing mixed fraction, pi, in log-space
       mixed_log_probs = log_probs + tf.nn.log_softmax(logit_pi, axis=-1)        # [B*L, num_mix]
+      tf.summary.histogram('mixed_log_probs', mixed_log_probs)
       # get negative log-probability
       loss = -tf.reduce_logsumexp(mixed_log_probs, axis=-1)                     # [B*L]
 
@@ -147,13 +148,21 @@ def masked_angular_mean_absolute_error(y_true, y_pred, mask, reduce=False):
     - reduce: bool, whether to sum the MAE over the angle triplet
 
   Returns:
-    - mae: mean absolute error, [B, out_dim] (or [B] if reduce=True)
+    - MAE: mean absolute error of angles, [out_dim] (or scalar if reduce=True)
   """
+
+  # NOTE: currently this function produces valid MAE only if y_pred is in range of [-pi, pi],
+  #     otherwise the output value is meaningless. This usually happens on mixture gaussian models
+  #     at the early training steps. If using von Mises mixture, the issue may be resolved.
+
   dist = tf.math.abs(y_pred - y_true)
   shifted = tf.math.abs(2 * PI - (dist))
   ae = tf.math.minimum(dist, shifted)                           # [B, L, out_dim]
   ae_masked = tf.multiply(ae, tf.expand_dims(mask, axis=-1))    # [B, L, out_dim]
-  mae = tf.math.divide_no_nan(tf.reduce_sum(ae_masked, axis=1), tf.reduce_sum(mask, axis=-1, keepdims=True))
+  mae_per_amino_acid = tf.math.divide_no_nan(
+      tf.reduce_sum(ae_masked, axis=1), tf.reduce_sum(mask, axis=-1, keepdims=True))  # [B, out_dim]
+  mae = tf.reduce_mean(mae_per_amino_acid, axis=0)
   if reduce:
-    return tf.reduce_sum(mae, axis=-1)
+    return tf.reduce_sum(mae)
   return mae
+
