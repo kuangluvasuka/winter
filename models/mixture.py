@@ -57,12 +57,15 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
       #    https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Likelihood_function
       #    Here, we distributed the term k*ln(2PI) to each of the k dimensions inside the
       #    tf.reduce_sum, thus each dimension should only be added with LOGTWOPI in stead of K*LOGTWOPI
-      # 2. Use softplus() to rescale log_sigma/logit_std so as to keep it the same as the above tfp branch?......
-      #std = tf.math.softplus(logit_std)
-      #logit_std = tf.math.log(std)
+      #
+      # 2. Use softplus() to rescale logit_std so as to keep it the same as the above tfp branch,
+      #    this change results in smaller loss, but can prevent overflow in the sampling function.
+      std = tf.math.softplus(logit_std)
+      log_scale = tf.math.log(std)
 
       log_probs = -0.5 * tf.reduce_sum(
-          LOGTWOPI + 2 * logit_std + tf.math.square(y_true - mean) * tf.math.exp(-2 * logit_std),
+          #LOGTWOPI + 2 * logit_std + tf.math.square(y_true - mean) * tf.math.exp(-2 * logit_std),
+          LOGTWOPI + 2 * log_scale + tf.math.square(y_true - mean) * tf.math.exp(-2 * log_scale),
           axis=-1)
       # get weighted of log-probability by summing mixed fraction, pi, in log-space
       mixed_log_probs = log_probs + tf.nn.log_softmax(logit_pi, axis=-1)        # [B*L, num_mix]
@@ -122,10 +125,11 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
       argmax = tf.argmax(logit_pi - tf.math.log(-tf.math.log(u)), axis=-1)
       onehot = tf.expand_dims(tf.one_hot(argmax, depth=num_mix, dtype=tf.float32), axis=-1)   # [B, num_mix, 1]
       # sample from selected gaussian
+      # NOTE: we use softplus() to resacale the logit_std since exp() causes explosion of std values
       u = tf.random.uniform([batch_size, out_dim], minval=1e-5, maxval=1. - 1e-5)
       mean = tf.reduce_sum(tf.multiply(mean, onehot), axis=1)                                 # [B, out_dim]
       logit_std = tf.reduce_sum(tf.multiply(logit_std, onehot), axis=1)
-      sample = mean + tf.exp(logit_std) * u
+      sample = mean + tf.math.softplus(logit_std) * u
 
     # clip sample to [-pi, pi]?
     return sample
