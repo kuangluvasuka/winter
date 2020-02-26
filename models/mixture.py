@@ -14,18 +14,18 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
   """
   LOGTWOPI = tf.constant(tf.math.log(2.0 * PI), dtype=tf.float32, name='log_two_pi')
 
-  def mixture_loss(y_true, y_hat, mask):
+  def mixture_loss(y_true, logit, mask):
     """
     Args:
       - y_true: [B, L, out_dim]
-      - y_hat: [B, L, 2 * out_dim * num_mix + num_mix]
+      - logit: [B, L, 2 * out_dim * num_mix + num_mix]
       - mask: [B, L]
 
     Returns:
       - loss:
     """
     batch_size, time_step, _ = tf.shape(y_true)
-    mean, logit_std, logit_pi = tf.split(y_hat, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, num_mix],
+    mean, logit_std, logit_pi = tf.split(logit, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, num_mix],
                                          axis=-1, name='mix_gaussian_coeff_split')
     # mean, std = [B, L, out_dim * num_mix]; pi = [B, L, num_mix]
 
@@ -88,16 +88,16 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
   """
   https://colab.research.google.com/github/tensorflow/probability/blob/master/tensorflow_probability/examples/jupyter_notebooks/Understanding_TensorFlow_Distributions_Shapes.ipynb
   """
-  def mixture_sampling(mean, logit_std, logit_pi):
+  def mixture_sampling(logit):
     """
     Args:
-      - mean: [B, out_dim * num_mix]
-      - logit_std: [B, out_dim * num_mix]
-      - logit_pi: [B, num_mix]
+      - logit: [B, 2 * out_dim * num_mix + num_mix]
 
     Returns:
       - sample: [B, out_dim]
     """
+    mean, logit_std, logit_pi = tf.split(logit, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, num_mix],
+                                         axis=-1, name='mix_gaussian_coeff_split_sampling')
     mean = tf.reshape(mean, [-1, num_mix, out_dim])
     logit_std = tf.reshape(tf.maximum(logit_std, log_scale_min_gauss), [-1, num_mix, out_dim])
     logit_pi = tf.reshape(logit_pi, [-1, num_mix])

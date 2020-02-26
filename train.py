@@ -34,8 +34,8 @@ def create_summary(summary_dir, summary_off=False):
 #@tf.function
 def train_step(model, inputs, loss_fn, optimizer):
   with tf.GradientTape() as tape:
-    y_hat = model(inputs)
-    loss = loss_fn(inputs['angle'], y_hat, inputs['tertiary_mask'])
+    logits = model(inputs)
+    loss = loss_fn(inputs['angle'], logits, inputs['tertiary_mask'])
   grads = tape.gradient(loss, model.trainable_variables)
   optimizer.apply_gradients(zip(grads, model.trainable_variables))
   return loss
@@ -43,8 +43,8 @@ def train_step(model, inputs, loss_fn, optimizer):
 
 #@tf.function
 def eval_step(model, inputs, loss_fn):
-  y_hat = model(inputs)
-  return loss_fn(inputs['angle'], y_hat, inputs['tertiary_mask'])
+  logits = model(inputs)
+  return loss_fn(inputs['angle'], logits, inputs['tertiary_mask'])
 
 
 def train(args, model, feeder, hparams):

@@ -80,55 +80,28 @@ class Recurrent(Layer):
     return self.layer(x, mask=mask)
 
 
-class RNade(Layer):
+class RNadeBase(Layer):
   """[1] Neural Autoregressive Distribution Estimator.
      https://arxiv.org/abs/1605.02226
 
      [2] RNADE: The real-valued neural autoregressive density-estimator.
      https://arxiv.org/abs/1306.0186
   """
-  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, dihedral_dim=3,
-               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='real_nade'):
-    """
-    Args:
-      - hidden_dim: Number of hidden units in NADE
-      - condition_dim: Number of units from conditional vectors per time step
-      - seq_length: Maximum length of input sequence (see hparams.json: max_sequence_length)
-      - dihedral_dim: Number of dihedral angles per time step of input
-      - num_mixtures: Number of mixing distributions
-      - act: Activation unit for encoded hidden state
-    """
+
+  def __init__(self, name='real_nade'):
     super().__init__(name=name)
 
-    self.rescaling = tf.Variable(
-        [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)],
-        trainable=False, name='rescaling_factor')
-
-    # TODO: concat or merge?
-    self.concat = True
-    if self.concat:
-      input_dim = dihedral_dim + condition_dim
-      output_dim = dihedral_dim
-      # NADE encoder
-      self.W_enc = tf.Variable(tf.random.normal([seq_length, input_dim, hidden_dim]), name='w_enc')
-      self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
-
-      # mixture decoder
-      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_mean')
-      self.linear_sigma = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_sigma')
-      self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
-
-    self._act = act
-    self._sample_fn = gaussian_mixture_sample_fn(out_dim=dihedral_dim,
-                                                 num_mix=num_mixtures,
-                                                 use_tfp=use_tfp)
+    self.W_enc = None
+    self.b_enc = None
+    self._act = None
+    self._sample_fn = None
+    self.rescaling = None
+    #self.concat = None
 
   def call(self, x, z, is_sampling=False):
     if is_sampling:
-      #assert (x is None), "No input dihedrals for sampling"
       return self._sample(z)
-    else:
-      return self._cal_prob(x, z)
+    return self._cal_prob(x, z)
 
   def _cal_prob(self, x, z):
     """
@@ -137,17 +110,7 @@ class RNade(Layer):
       - z: Conditional vectors, shape=[B, L, condition_dim]
 
     Returns:
-      - logits: A triplet containing
-        1) logit_mean: The logit means of mixtures at each time steps, shape=[B, L, out_dim * num_mix]
-        2) logit_std: The logit stddevs of mixtures, shape=[B, L, out_dim * num_mix].
-        3) logit_pi: The logit probability of mixtures, shape=[B, L, num_mix]
-
-      NOTE:
-        - logit_mean is the mean of gaussians: mean = logit_mean. Prefixing with 'logit' just to
-              keep the naming constant.
-        - logit_std is not the final standard deviation of gaussians: stddev = tf.exp(logit_std)
-              or stddev = tf.math.softplus(logit_std)
-        - logit_pi is the unnormalized log probability of mixtures, where pi = tf.softmax(logit_pi)
+      - logits: Parameterized coefficients of the mixture model, shape=[B, L, model dependent dim]
     """
     batch_size, time_steps, _ = tf.shape(x)
 
@@ -163,8 +126,8 @@ class RNade(Layer):
     logits = []
 
     for i in tf.range(time_steps):
-      h_mu, h_sigma, h_pi = self._get_mixture_coeff(i, a)
-      logits.append(tf.concat([h_mu, h_sigma, h_pi], axis=1))
+      mixture_coeff = self._get_mixture_coeff(i, a)
+      logits.append(mixture_coeff)
       a = self.rescaling[i+1] * (a / self.rescaling[i] + tf.matmul(x[i], self.W_enc[i]))
 
     # back to batch-major
@@ -186,10 +149,8 @@ class RNade(Layer):
     a = tf.tile(self.b_enc, [batch_size, 1])
 
     for i in tf.range(time_steps):
-      #tf.print(i)
-      #tf.print(a)
-      h_mu, h_sigma, h_pi = self._get_mixture_coeff(i, a)
-      s = self._sample_fn(h_mu, h_sigma, h_pi)          # [B, 3]
+      mixture_coeff = self._get_mixture_coeff(i, a)
+      s = self._sample_fn(mixture_coeff)                # [B, 3]
 
       # conditional nade
       # TODO: is there any other ways to combine s and z?
@@ -205,19 +166,63 @@ class RNade(Layer):
     return samples
 
   def _get_mixture_coeff(self, i, a_i):
+    raise NotImplementedError("Need implementation of _get_mixture_coeff().")
+
+
+class RNadeMOG(RNadeBase):
+  """Real Nade for mixture of Gaussian model."""
+
+  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, dihedral_dim=3,
+               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMOG'):
+    """
+    Args:
+      - hidden_dim: Number of hidden units
+      - condition_dim: Number of units from conditional vectors per time step
+      - seq_length: Maximum length of input sequence (see hparams.json: max_sequence_length)
+      - dihedral_dim: Number of dihedral angles per time step of input
+      - num_mixtures: Number of mixing distributions
+      - act: Activation unit for encoded hidden state
+    """
+    super().__init__(name)
+
+    self.concat = True
+    if self.concat:
+      input_dim = dihedral_dim + condition_dim
+      output_dim = dihedral_dim
+      # NADE encoder
+      self.W_enc = tf.Variable(tf.random.normal([seq_length, input_dim, hidden_dim]), name='w_enc')
+      self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
+
+      # mixture decoder
+      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_mean')
+      self.linear_sigma = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_sigma')
+      self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
+
+    self.rescaling = tf.Variable(
+        [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
+    self._sample_fn = gaussian_mixture_sample_fn(out_dim=dihedral_dim, num_mix=num_mixtures, use_tfp=use_tfp)
+    self._act = act
+
+  def _get_mixture_coeff(self, i, a_i):
     """ Compute
     Args:
       - i: integer, time step
       - a_i: hidden state prior to the activation layer, shape=[B, hidden]
 
     Returns:
-      - h_mu: mean of gaussians, shape=[B, out_dim * num_mix]
-      - h_sigma: stddev of gaussians, shape=[B, out_dim * num_mix]
-      - h_pi: mixing fractions, shape=[B, num_mix]
+      parameterized coefficients for mixture of gaussian containing the following:
+        - h_mean: The means of mixtures at each time steps, shape=[B, out_dim * num_mix]
+        - h_std: The stddevs of mixtures, shape=[B, out_dim * num_mix].
+        - h_pi: The probability of mixtures, shape=[B, num_mix]
+
+      NOTE:
+        - h_mean is the mean of gaussians: mean = h_mean
+        - h_std is not the final standard deviation of gaussians: stddev = tf.exp(h_std)
+              or stddev = tf.math.softplus(h_std)
+        - h_pi is the unnormalized log probability of mixtures, where pi = tf.softmax(h_pi)
     """
     h = self._act(a_i)
     h_mean = self.linear_mean(h, i)
     h_sigma = self.linear_sigma(h, i)
     h_pi = self.linear_pi(h, i)
-
-    return h_mean, h_sigma, h_pi
+    return tf.concat([h_mean, h_sigma, h_pi], axis=1)

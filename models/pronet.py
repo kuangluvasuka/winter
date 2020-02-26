@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from models.module import Recurrent, Embedding, RNade
+from models.module import Recurrent, Embedding, RNadeMOG
 
 
 class Pronet(tf.keras.Model):
@@ -35,12 +35,12 @@ class Pronet(tf.keras.Model):
                                 bidirectional=hp.bidirectional)
 
     # Initializing RNADE layer
-    self._rnade = RNade(hidden_dim=hp.autoregressive_unit,
-                        condition_dim=hp.rnn_units,
-                        seq_length=hp.max_sequence_length,
-                        dihedral_dim=hp.dihedral_dim,
-                        num_mixtures=hp.num_mixtures,
-                        use_tfp=hp.use_tfp)
+    self._rnade = RNadeMOG(hidden_dim=hp.autoregressive_unit,
+                           condition_dim=hp.rnn_units,
+                           seq_length=hp.max_sequence_length,
+                           dihedral_dim=hp.dihedral_dim,
+                           num_mixtures=hp.num_mixtures,
+                           use_tfp=hp.use_tfp)
 
   def call(self, inputs, is_sampling=False):
     """
