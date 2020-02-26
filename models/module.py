@@ -24,15 +24,27 @@ class Embedding(Layer):
     return tf.nn.embedding_lookup(self._embedding_matrix, x)
 
 
-class Linear(Layer):
-  def __init__(self, in_features, out_features, name='linear'):
-    super().__init__(name=name)
-    self.w = tf.Variable(tf.random.normal([in_features, out_features]), name=name + '_W')
-    self.b = tf.Variable(tf.zeros(out_features), name=name + '_b')
+class Addressable_Linear(Layer):
+  """
+    Linear layer with shape=[a,b,c] where the first dimension can be indexed in computation.
+  """
+  # TODO:
+  #def _init_net(self, ):
+  #  """Self implementation of lazy building mechanism, or rewrite Layer's build() method."""
+  #  pass
 
-  def call(self, x):
-    y = tf.matmul(x, self.w) + self.b
-    return tf.nn.relu(y)
+  def __init__(self, seq_length, in_features, out_features, act=lambda x: x, name='linear'):
+    super().__init__(name=name)
+    self.w = tf.Variable(tf.random.normal([seq_length, in_features, out_features]), name='w_' + name)
+    self.b = tf.Variable(tf.zeros([seq_length, 1, out_features]), name='b_' + name)
+    self._act = act
+
+  def __getitem__(self, idx):
+    return (self.w[idx], self.b[idx])
+
+  def call(self, x, idx):
+    y = tf.matmul(x, self.w[idx]) + self.b[idx]
+    return self._act(y)
 
 
 class Recurrent(Layer):
@@ -102,21 +114,14 @@ class RNade(Layer):
       self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
 
       # mixture decoder
-      self.V_mu = tf.Variable(tf.random.normal([seq_length, hidden_dim, output_dim * num_mixtures]), name='v_mu')
-      self.b_mu = tf.Variable(tf.zeros([seq_length, 1, output_dim * num_mixtures]), name='b_mu')
-      self.V_sigma = tf.Variable(tf.random.normal([seq_length, hidden_dim, output_dim * num_mixtures]), name='v_sigma')
-      self.b_sigma = tf.Variable(tf.zeros([seq_length, 1, output_dim * num_mixtures]), name='b_sigma')
-      self.V_pi = tf.Variable(tf.random.normal([seq_length, hidden_dim, num_mixtures]), name='v_pi')
-      self.b_pi = tf.Variable(tf.zeros([seq_length, 1, num_mixtures]), name='b_pi')
+      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_mean')
+      self.linear_sigma = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_sigma')
+      self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
 
     self._act = act
     self._sample_fn = gaussian_mixture_sample_fn(out_dim=dihedral_dim,
                                                  num_mix=num_mixtures,
                                                  use_tfp=use_tfp)
-
-  #def _init_net(self, ):
-  #  """Self implementation of lazy building mechanism, or rewrite Layer's build() method."""
-  #  pass
 
   def call(self, x, z, is_sampling=False):
     if is_sampling:
@@ -211,8 +216,8 @@ class RNade(Layer):
       - h_pi: mixing fractions, shape=[B, num_mix]
     """
     h = self._act(a_i)
-    h_mu = tf.matmul(h, self.V_mu[i]) + self.b_mu[i]
-    h_sigma = tf.matmul(h, self.V_sigma[i]) + self.b_sigma[i]
-    h_pi = tf.matmul(h, self.V_pi[i]) + self.b_pi[i]
+    h_mean = self.linear_mean(h, i)
+    h_sigma = self.linear_sigma(h, i)
+    h_pi = self.linear_pi(h, i)
 
-    return h_mu, h_sigma, h_pi
+    return h_mean, h_sigma, h_pi
