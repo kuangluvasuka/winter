@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from models.module import Recurrent, Embedding, RNadeMOG
+from models.module import Recurrent, Embedding, RNadeMoG, RNadeMoVM
 
 
 class Pronet(tf.keras.Model):
@@ -35,12 +35,18 @@ class Pronet(tf.keras.Model):
                                 bidirectional=hp.bidirectional)
 
     # Initializing RNADE layer
-    self._rnade = RNadeMOG(hidden_dim=hp.autoregressive_unit,
-                           condition_dim=hp.rnn_units,
-                           seq_length=hp.max_sequence_length,
-                           dihedral_dim=hp.dihedral_dim,
-                           num_mixtures=hp.num_mixtures,
-                           use_tfp=hp.use_tfp)
+    if hp.distribution == 'gaussian':
+      nade = RNadeMoG
+    elif hp.distribution == 'von_mises':
+      nade = RNadeMoVM
+    else:
+      raise ValueError("hparam.distribution has only two options: 'gaussian' or 'von_mises'.")
+    self._rnade = nade(hidden_dim=hp.autoregressive_unit,
+                       condition_dim=hp.rnn_units,
+                       seq_length=hp.max_sequence_length,
+                       output_dim=hp.dihedral_dim,
+                       num_mixtures=hp.num_mixtures,
+                       use_tfp=hp.use_tfp)
 
   def call(self, inputs, is_sampling=False):
     """

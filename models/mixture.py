@@ -129,7 +129,10 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
       # NOTE: we use softplus() to resacale the logit_std since exp() causes explosion of std values
       u = tf.random.uniform([batch_size, out_dim], minval=1e-5, maxval=1. - 1e-5)
       mean = tf.reduce_sum(tf.multiply(mean, onehot), axis=1)                                 # [B, out_dim]
+
+      # TODO: cap std like np.maximum(logit_std, 1)
       logit_std = tf.reduce_sum(tf.multiply(logit_std, onehot), axis=1)
+
       sample = mean + tf.math.softplus(logit_std) * u
 
     # clip sample to [-pi, pi]?
@@ -137,6 +140,66 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
 
   with tf.name_scope('gaussian_mixture_sample'):
     return mixture_sampling
+
+
+def vonmises_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_scale_min_gauss=-7.0):
+  """ multivariate von Mises mixture distribution. """
+  LOGTWOPI = tf.constant(tf.math.log(2.0 * PI), dtype=tf.float32, name='log_two_pi')
+
+  def mixture_loss(y_true, logit, mask):
+    """
+    Args:
+      - y_true: [B, L, out_dim]
+      - logit: [B, L, 3 * out_dim * num_mix + num_mix]
+      - mask: [B, L]
+
+    Return:
+      - loss
+    """
+    batch_size, time_step, _ = tf.shape(y_true)
+    mean, logit_kappa, logit_lambda, logit_pi = tf.split(
+        logit, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, out_dim * num_mix, num_mix],
+        axis=-1, name='mix_vm_coeff_split')
+
+    y_true = tf.reshape(y_true, [-1, 1, out_dim])                               # [B*L, 1, out_dim]
+    mask = tf.reshape(mask, [-1])                                               # [B*L]
+    mean = tf.reshape(mean, [-1, num_mix, out_dim])                             # [B*L, num_mix, out_dim]
+    logit_kappa = tf.reshape(logit_kappa, [-1, num_mix, out_dim])               # [B*L, num_mix, out_dim]
+    logit_lambda = tf.reshape(logit_lambda, [-1, num_mix, out_dim])
+    logit_pi = tf.reshape(logit_pi, [-1, num_mix])                              # [B*L, num_mix]
+
+    # rescale parameters
+    kappa = tf.math.softplus(logit_kappa)
+    # lambda_ = tf.math.softplus(logit_lambda)
+    lambda_ = logit_lambda
+
+    sin_diff = tf.sin(y_true - mean)                                            # [B*L, num_mix, out_dim]
+    cos_diff = tf.cos(y_true - mean)
+
+    # NOTE: indexing the last dimension using 0:1 and the like only to maintain the resultant
+    #       matrix with shape=[B*l, num_mix, 1]
+    theta_0 = lambda_[:, :, 0:1] * sin_diff[:, :, 1:2] + lambda_[:, :, 1:2] * sin_diff[:, :, 2:]
+    theta_1 = lambda_[:, :, 0:1] * sin_diff[:, :, 0:1] + lambda_[:, :, 2:] * sin_diff[:, :, 2:]
+    theta_2 = lambda_[:, :, 1:2] * sin_diff[:, :, 0:1] + lambda_[:, :, 2:] * sin_diff[:, :, 1:2]
+    theta = tf.concat([theta_0, theta_1, theta_2], axis=-1)                     # [B*L, num_mix, out_dim]
+
+    k_neg = tf.sqrt(kappa * kappa + theta * theta)
+    log_probs = tf.reduce_sum(
+        #-LOGTWOPI - tf.math.log(tf.math.bessel_i0(k_neg)) + cos_diff * kappa + sin_diff * theta,
+        -LOGTWOPI - (tf.math.log(tf.math.bessel_i0e(k_neg)) + k_neg) + cos_diff * kappa + sin_diff * theta,
+        axis=-1)
+
+    mixed_log_probs = log_probs + tf.nn.log_softmax(logit_pi, axis=-1)          # [B*L, num_mix]
+    loss = -tf.reduce_logsumexp(mixed_log_probs, axis=-1)                       # [B*L]
+    loss = tf.multiply(loss, mask, name='masking')
+
+    if reduce:
+      return tf.reduce_sum(loss)
+    else:
+      return tf.reshape(loss, [batch_size, time_step])
+
+  with tf.name_scope('von_mises_mixture_loss'):
+    return mixture_loss
 
 
 def masked_angular_mean_absolute_error(y_true, y_pred, mask, reduce=False):
@@ -165,4 +228,3 @@ def masked_angular_mean_absolute_error(y_true, y_pred, mask, reduce=False):
   if reduce:
     return tf.reduce_sum(mae)
   return mae
-

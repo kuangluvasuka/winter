@@ -9,7 +9,6 @@
     "dihedral_dim": 3,
     "max_sequence_length": 500,
 
-
     "one_hot_embedding": true,
     "embedding_dim": 10,
     "bidirectional": false,
@@ -18,9 +17,8 @@
 
     "autoregressive_unit": 64,
     "num_mixtures": 5,
-
+    "distribution": "von_mises",
 
     "use_tfp": false
-
 
 }
