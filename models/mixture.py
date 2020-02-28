@@ -246,7 +246,6 @@ def vonmises_mixture_sample_fn(out_dim, num_mix, burn_in=10, avg_count=5, log_sc
     Returns:
       - sample: [B, out_dim]
     """
-    print(burn_in)
     mean, logit_kappa, logit_lambda, logit_pi = tf.split(
         logit, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, out_dim * num_mix, num_mix],
         axis=-1, name='mix_vm_coeff_split_sampling')
