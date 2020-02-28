@@ -46,7 +46,12 @@ class Pronet(tf.keras.Model):
                        seq_length=hp.max_sequence_length,
                        output_dim=hp.dihedral_dim,
                        num_mixtures=hp.num_mixtures,
-                       use_tfp=hp.use_tfp)
+                       use_tfp=hp.use_tfp,
+                       burn_in=hp.burn_in,
+                       avg_count=hp.average_count)
+
+  def reset_sample_function(self, fn):
+    self._rnade.reset_sample_fn(fn)
 
   def call(self, inputs, is_sampling=False):
     """

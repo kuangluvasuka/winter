@@ -143,7 +143,7 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
 
 
 def vonmises_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_scale_min_gauss=-7.0):
-  """ multivariate von Mises mixture distribution. """
+  """Loss function for multivariate von Mises mixture distribution."""
   LOGTWOPI = tf.constant(tf.math.log(2.0 * PI), dtype=tf.float32, name='log_two_pi')
 
   def mixture_loss(y_true, logit, mask):
@@ -178,15 +178,15 @@ def vonmises_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
 
     # NOTE: indexing the last dimension using 0:1 and the like only to maintain the resultant
     #       matrix with shape=[B*l, num_mix, 1]
-    theta_0 = lambda_[:, :, 0:1] * sin_diff[:, :, 1:2] + lambda_[:, :, 1:2] * sin_diff[:, :, 2:]
-    theta_1 = lambda_[:, :, 0:1] * sin_diff[:, :, 0:1] + lambda_[:, :, 2:] * sin_diff[:, :, 2:]
-    theta_2 = lambda_[:, :, 1:2] * sin_diff[:, :, 0:1] + lambda_[:, :, 2:] * sin_diff[:, :, 1:2]
-    theta = tf.concat([theta_0, theta_1, theta_2], axis=-1)                     # [B*L, num_mix, out_dim]
+    phi_0 = lambda_[:, :, 0:1] * sin_diff[:, :, 1:2] + lambda_[:, :, 1:2] * sin_diff[:, :, 2:]
+    phi_1 = lambda_[:, :, 0:1] * sin_diff[:, :, 0:1] + lambda_[:, :, 2:] * sin_diff[:, :, 2:]
+    phi_2 = lambda_[:, :, 1:2] * sin_diff[:, :, 0:1] + lambda_[:, :, 2:] * sin_diff[:, :, 1:2]
+    phi = tf.concat([phi_0, phi_1, phi_2], axis=-1)                             # [B*L, num_mix, out_dim]
 
-    k_neg = tf.sqrt(kappa * kappa + theta * theta)
+    k_neg = tf.sqrt(kappa * kappa + phi * phi)
     log_probs = tf.reduce_sum(
-        #-LOGTWOPI - tf.math.log(tf.math.bessel_i0(k_neg)) + cos_diff * kappa + sin_diff * theta,
-        -LOGTWOPI - (tf.math.log(tf.math.bessel_i0e(k_neg)) + k_neg) + cos_diff * kappa + sin_diff * theta,
+        #-LOGTWOPI - tf.math.log(tf.math.bessel_i0(k_neg)) + cos_diff * kappa + sin_diff * phi,
+        -LOGTWOPI - (tf.math.log(tf.math.bessel_i0e(k_neg)) + k_neg) + cos_diff * kappa + sin_diff * phi,
         axis=-1)
 
     mixed_log_probs = log_probs + tf.nn.log_softmax(logit_pi, axis=-1)          # [B*L, num_mix]
@@ -200,6 +200,77 @@ def vonmises_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
 
   with tf.name_scope('von_mises_mixture_loss'):
     return mixture_loss
+
+
+def vonmises_mixture_sample_fn(out_dim, num_mix, burn_in=10, avg_count=5, log_scale_min_gauss=-7.0):
+  """Sampling function for multivariate von Mises mixture distribution."""
+
+  def gibbs_sampler(batch_size, mu, kappa, lambda_):
+    """
+    Gibbs sampling for triviate Von Mises distribution.
+      Note: this function is hardcoded for 3-dimensional samples
+    """
+    x_0 = tf.zeros([batch_size])
+    x_1 = tf.zeros([batch_size])
+    x_2 = tf.zeros([batch_size])
+    samples = []
+    for i in tf.range(burn_in + avg_count):
+      phi_0 = lambda_[:, 0] * tf.sin(x_1 - mu[:, 1]) + lambda_[:, 1] * tf.sin(x_2 - mu[:, 2])
+      k_neg_0 = tf.sqrt(kappa[:, 0] * kappa[:, 0] + phi_0 * phi_0)
+      mu_neg_0 = mu[:, 0] + tf.atan(phi_0 / kappa[:, 0])
+      dist_0 = tfd.VonMises(loc=mu_neg_0, concentration=k_neg_0)
+      x_0 = dist_0.sample()
+
+      phi_1 = lambda_[:, 0] * tf.sin(x_0 - mu[:, 0]) + lambda_[:, 2] * tf.sin(x_2 - mu[:, 2])
+      k_neg_1 = tf.sqrt(kappa[:, 1] * kappa[:, 1] + phi_1 * phi_1)
+      mu_neg_1 = mu[:, 1] + tf.atan(phi_1 / kappa[:, 1])
+      dist_1 = tfd.VonMises(loc=mu_neg_1, concentration=k_neg_1)
+      x_1 = dist_1.sample()
+
+      phi_2 = lambda_[:, 1] * tf.sin(x_0 - mu[:, 0]) + lambda_[:, 2] * tf.sin(x_1 - mu[:, 1])
+      k_neg_2 = tf.sqrt(kappa[:, 2] * kappa[:, 2] + phi_2 * phi_2)
+      mu_neg_2 = mu[:, 2] + tf.atan(phi_2 / kappa[:, 2])
+      dist_2 = tfd.VonMises(loc=mu_neg_2, concentration=k_neg_2)
+      x_2 = dist_2.sample()
+
+      if i >= burn_in:
+        samples.append(tf.stack([x_0, x_1, x_2], axis=1))            # [avg_count, B, out_dim]
+
+    return tf.reduce_mean(tf.stack(samples), axis=0)
+
+  def mixture_sampling(logit):
+    """
+    Args:
+      - logit: [B, 3 * out_dim * num_mix + num_mix]
+
+    Returns:
+      - sample: [B, out_dim]
+    """
+    print(burn_in)
+    mean, logit_kappa, logit_lambda, logit_pi = tf.split(
+        logit, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, out_dim * num_mix, num_mix],
+        axis=-1, name='mix_vm_coeff_split_sampling')
+    mean = tf.reshape(mean, [-1, num_mix, out_dim])
+    logit_kappa = tf.reshape(logit_kappa, [-1, num_mix, out_dim])
+    logit_lambda = tf.reshape(logit_lambda, [-1, num_mix, out_dim])
+    logit_pi = tf.reshape(logit_pi, [-1, num_mix])
+
+    # sample mixture distribution from softmax-ed pi
+    batch_size, _ = tf.shape(logit_pi)
+    u = tf.random.uniform(tf.shape(logit_pi), minval=1e-5, maxval=1. - 1e-5)
+    argmax = tf.argmax(logit_pi - tf.math.log(-tf.math.log(u)), axis=-1)
+    onehot = tf.expand_dims(tf.one_hot(argmax, depth=num_mix, dtype=tf.float32), axis=-1)   # [B, num_mix, 1]
+
+    # select and rescale parameters
+    mean = tf.reduce_sum(tf.multiply(mean, onehot), axis=1)                                 # [B, out_dim]
+    kappa = tf.math.softplus(tf.reduce_sum(tf.multiply(logit_kappa, onehot), axis=1))
+    lambda_ = tf.reduce_sum(tf.multiply(logit_lambda, onehot), axis=1)
+
+    # Gibbs sampling
+    return gibbs_sampler(batch_size, mean, kappa, lambda_)
+
+  with tf.name_scope('von_mises_mixture_sample'):
+    return mixture_sampling
 
 
 def masked_angular_mean_absolute_error(y_true, y_pred, mask, reduce=False):
@@ -224,7 +295,7 @@ def masked_angular_mean_absolute_error(y_true, y_pred, mask, reduce=False):
   ae_masked = tf.multiply(ae, tf.expand_dims(mask, axis=-1))    # [B, L, out_dim]
   mae_per_amino_acid = tf.math.divide_no_nan(
       tf.reduce_sum(ae_masked, axis=1), tf.reduce_sum(mask, axis=-1, keepdims=True))  # [B, out_dim]
-  mae = tf.reduce_mean(mae_per_amino_acid, axis=0)
+  mae = tf.reduce_mean(mae_per_amino_acid, axis=0)              # [out_dim]
   if reduce:
     return tf.reduce_sum(mae)
   return mae

@@ -164,8 +164,16 @@ class RNadeBase(Layer):
     samples = tf.transpose(tf.stack(samples), perm=[1, 0, 2])
     return samples
 
+  def reset_sample_fn(self, fn):
+    """This is useful when tuning the 'burn-in' parameter in the vonmises sampler.
+
+    Args:
+      fn: callback of a sampler
+    """
+    self._sample_fn = fn
+
   def _get_mixture_coeff(self, i, a_i):
-    raise NotImplementedError("Need implementation of _get_mixture_coeff().")
+    raise NotImplementedError("Subclasses should implement this!")
 
 
 class RNadeMoG(RNadeBase):
@@ -230,9 +238,11 @@ class RNadeMoVM(RNadeBase):
   """Real Nade for mixture of multivariate Von Mises model."""
 
   def __init__(self, hidden_dim, condition_dim=32, seq_length=500, output_dim=3,
-               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoVM'):
+               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoVM', **kwargs):
 
     super().__init__(name)
+    burn_in = kwargs['burn_in']
+    avg_count = kwargs['avg_count']
 
     self.concat = True
     if self.concat:
@@ -249,7 +259,8 @@ class RNadeMoVM(RNadeBase):
 
     self.rescaling = tf.Variable(
         [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
-    self._sample_fn = vonmises_mixture_sample_fn(out_dim=output_dim, num_mix=num_mixtures, use_tfp=use_tfp)
+    self._sample_fn = vonmises_mixture_sample_fn(out_dim=output_dim, num_mix=num_mixtures,
+                                                 burn_in=burn_in, avg_count=avg_count)
     self._act = act
 
   def _get_mixture_coeff(self, i, a_i):
