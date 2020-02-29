@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from models.module import Recurrent, Embedding, RNadeMoG, RNadeMoVM
+from models.module import Recurrent, Embedding, RNadeMoG, RNadeMoVM, RNadeMoIVM
 
 
 class Pronet(tf.keras.Model):
@@ -39,6 +39,8 @@ class Pronet(tf.keras.Model):
       nade = RNadeMoG
     elif hp.distribution == 'von_mises':
       nade = RNadeMoVM
+    elif hp.distribution == 'independent_von_mises':
+      nade = RNadeMoIVM
     else:
       raise ValueError("hparam.distribution has only two options: 'gaussian' or 'von_mises'.")
     self._rnade = nade(hidden_dim=hp.autoregressive_unit,

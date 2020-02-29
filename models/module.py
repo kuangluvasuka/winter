@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
-from models.mixture import gaussian_mixture_sample_fn, vonmises_mixture_sample_fn
+from models.mixture import gaussian_mixture_sample_fn, vonmises_mixture_sample_fn, independent_vonmises_mixture_sample_fn
 
 
 # TODO: modify all modules using lazy building?
@@ -180,7 +180,7 @@ class RNadeMoG(RNadeBase):
   """Real Nade for mixture of multivariate Gaussian model."""
 
   def __init__(self, hidden_dim, condition_dim=32, seq_length=500, output_dim=3,
-               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoG'):
+               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoG', **kwargs):
     """
     Args:
       - hidden_dim: Number of hidden units
@@ -232,6 +232,39 @@ class RNadeMoG(RNadeBase):
     h_sigma = self.linear_sigma(h, i)
     h_pi = self.linear_pi(h, i)
     return tf.concat([h_mean, h_sigma, h_pi], axis=1)
+
+
+class RNadeMoIVM(RNadeBase):
+  """Real Nade for mixture of independent multivariate Von Mises model."""
+  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, output_dim=3,
+               num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoIVM', **kwargs):
+
+    super().__init__(name)
+
+    self.concat = True
+    if self.concat:
+      input_dim = output_dim + condition_dim
+      # NADE encoder
+      self.W_enc = tf.Variable(tf.random.normal([seq_length, input_dim, hidden_dim]), name='w_enc')
+      self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
+
+      # mixture decoder
+      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_mean')
+      self.linear_kappa = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_kappa')
+      self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
+
+    self.rescaling = tf.Variable(
+        [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
+    self._sample_fn = independent_vonmises_mixture_sample_fn(out_dim=output_dim, num_mix=num_mixtures)
+    self._act = act
+
+  def _get_mixture_coeff(self, i, a_i):
+    h = self._act(a_i)
+    h_mean = self.linear_mean(h, i)
+    h_kappa = self.linear_kappa(h, i)
+    h_pi = self.linear_pi(h, i)
+
+    return tf.concat([h_mean, h_kappa, h_pi], axis=1)
 
 
 class RNadeMoVM(RNadeBase):

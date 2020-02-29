@@ -18,8 +18,8 @@
     "autoregressive_unit": 64,
     "num_mixtures": 5,
 
-    "_comment": "distribution has two options: gaussian | von_mises",
-    "distribution": "von_mises",
+    "_comment": "distribution has 3 options: gaussian | von_mises | independent_von_mises",
+    "distribution": "independent_von_mises",
 
     "use_tfp": false,
     "burn_in": 100,

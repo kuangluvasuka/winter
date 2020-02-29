@@ -31,20 +31,20 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
 
     mask = tf.reshape(mask, [-1])                                               # [B*L]
     mean = tf.reshape(mean, [-1, num_mix, out_dim])                             # [B*L, num_mix, out_dim]
-    logit_std = tf.reshape(
-        tf.maximum(logit_std, log_scale_min_gauss), [-1, num_mix, out_dim])     # [B*L, num_mix, out_dim]
+    logit_std = tf.reshape(tf.maximum(logit_std, log_scale_min_gauss), [-1, num_mix, out_dim])
+    std = tf.math.softplus(logit_std)
     logit_pi = tf.reshape(logit_pi, [-1, num_mix])                              # [B*L, num_mix]
 
     if use_tfp:
       y_true = tf.reshape(y_true, [-1, out_dim])
       means = tf.unstack(mean, axis=1)
-      logit_stds = tf.unstack(logit_std, axis=1)
+      stds = tf.unstack(std, axis=1)
 
       mixture = tfd.Mixture(
           cat=tfd.Categorical(logits=logit_pi),
           components=[tfd.MultivariateNormalDiag(
               loc=loc,
-              scale_diag=tf.math.softplus(scale)) for loc, scale in zip(means, logit_stds)])
+              scale_diag=scale) for loc, scale in zip(means, stds)])
 
       loss = -mixture.log_prob(y_true)
     else:
@@ -60,7 +60,6 @@ def gaussian_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_s
       #
       # 2. Use softplus() to rescale logit_std so as to keep it the same as the above tfp branch,
       #    this change results in smaller loss, but can prevent overflow in the sampling function.
-      std = tf.math.softplus(logit_std)
       log_scale = tf.math.log(std)
 
       log_probs = -0.5 * tf.reduce_sum(
@@ -100,23 +99,19 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
                                          axis=-1, name='mix_gaussian_coeff_split_sampling')
     mean = tf.reshape(mean, [-1, num_mix, out_dim])
     logit_std = tf.reshape(tf.maximum(logit_std, log_scale_min_gauss), [-1, num_mix, out_dim])
+    std = tf.math.softplus(logit_std)
     logit_pi = tf.reshape(logit_pi, [-1, num_mix])
-    #tf.print(mean)
-    #tf.print(tf.shape(logit_std))
-    #tf.print(logit_pi)
 
-    #use_tfp = True
     if use_tfp:
       means = tf.unstack(mean, axis=1)
-      logit_stds = tf.unstack(logit_std, axis=1)
+      stds = tf.unstack(std, axis=1)
 
       mixture = tfd.Mixture(
           cat=tfd.Categorical(logits=logit_pi),
           components=[tfd.MultivariateNormalDiag(
               loc=loc,
-              scale_diag=tf.math.softplus(scale)) for loc, scale in zip(means, logit_stds)])
+              scale_diag=scale) for loc, scale in zip(means, stds)])
 
-      #tf.print(mixture.mean())
       sample = mixture.sample()
     else:
       # sample mixture distribution from softmax-ed pi
@@ -139,6 +134,98 @@ def gaussian_mixture_sample_fn(out_dim, num_mix, use_tfp=False, log_scale_min_ga
     return sample
 
   with tf.name_scope('gaussian_mixture_sample'):
+    return mixture_sampling
+
+
+def independent_vonmises_mixture_loss_fn(out_dim, num_mix, use_tfp=False, reduce=True, log_scale_min_gauss=-7.0):
+  """Loss function for independent multivariate von Mises mixture distribution."""
+  LOGTWOPI = tf.constant(tf.math.log(2.0 * PI), dtype=tf.float32, name='log_two_pi')
+
+  def mixture_loss(y_true, logit, mask):
+    """
+    Args:
+      - y_true: [B, L, out_dim]
+      - logit: [B, L, 2 * out_dim * num_mix + num_mix]
+      - mask: [B, L]
+
+    Return:
+      - loss
+    """
+    batch_size, time_step, _ = tf.shape(y_true)
+    mean, logit_kappa, logit_pi = tf.split(
+        logit, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, num_mix],
+        axis=-1, name='mix_ivm_coeff_split')
+
+    mask = tf.reshape(mask, [-1])                                               # [B*L]
+    mean = tf.reshape(mean, [-1, num_mix, out_dim])                             # [B*L, num_mix, out_dim]
+    logit_kappa = tf.reshape(logit_kappa, [-1, num_mix, out_dim])               # [B*L, num_mix, out_dim]
+    logit_pi = tf.reshape(logit_pi, [-1, num_mix])                              # [B*L, num_mix]
+    # rescale parameters
+    kappa = tf.math.softplus(logit_kappa)
+
+    if use_tfp:
+      y_true = tf.reshape(y_true, [-1, out_dim])
+      means = tf.unstack(mean, axis=1)
+      kappas = tf.unstack(kappa, axis=1)
+
+      mixture = tfd.Mixture(
+          cat=tfd.Categorical(logits=logit_pi),
+          components=[tfd.Independent(
+              distribution=tfd.VonMises(loc=loc, concentration=scale),
+              reinterpreted_batch_ndims=1) for loc, scale in zip(means, kappas)])
+
+      loss = -mixture.log_prob(y_true)
+    else:
+      y_true = tf.reshape(y_true, [-1, 1, out_dim])                               # [B*L, 1, out_dim]
+      cos_diff = tf.cos(y_true - mean)
+      log_probs = tf.reduce_sum(
+          -LOGTWOPI - (tf.math.log(tf.math.bessel_i0e(kappa)) + kappa) + cos_diff * kappa,
+          axis=-1)
+      mixed_log_probs = log_probs + tf.nn.log_softmax(logit_pi, axis=-1)
+      loss = -tf.reduce_logsumexp(mixed_log_probs, axis=-1)
+
+    loss = tf.multiply(loss, mask, name='masking')
+
+    if reduce:
+      return tf.reduce_sum(loss)
+    else:
+      return tf.reshape(loss, [batch_size, time_step])
+
+  with tf.name_scope('independent_von_mises_mixture_loss'):
+    return mixture_loss
+
+
+def independent_vonmises_mixture_sample_fn(out_dim, num_mix, reduce=True, log_scale_min_gauss=-7.0):
+  """Sampling function for independent multivariate von Mises mixture distribution."""
+  def mixture_sampling(logit):
+    """
+    Args:
+      - logit: [B, 2 * out_dim * num_mix + num_mix]
+
+    Returns:
+      - sample: [B, out_dim]
+    """
+    mean, logit_kappa, logit_pi = tf.split(
+        logit, num_or_size_splits=[out_dim * num_mix, out_dim * num_mix, num_mix],
+        axis=-1, name='mix_ivm_coeff_split_sampling')
+    mean = tf.reshape(mean, [-1, num_mix, out_dim])
+    logit_kappa = tf.reshape(logit_kappa, [-1, num_mix, out_dim])
+    kappa = tf.math.softplus(logit_kappa)
+    logit_pi = tf.reshape(logit_pi, [-1, num_mix])
+
+    means = tf.unstack(mean, axis=1)
+    kappas = tf.unstack(kappa, axis=1)
+
+    mixture = tfd.Mixture(
+        cat=tfd.Categorical(logits=logit_pi),
+        components=[tfd.Independent(
+            distribution=tfd.VonMises(loc=loc, concentration=scale),
+            reinterpreted_batch_ndims=1) for loc, scale in zip(means, kappas)])
+
+    sample = mixture.sample()
+    return sample
+
+  with tf.name_scope('independent_von_mises_mixture_sample'):
     return mixture_sampling
 
 

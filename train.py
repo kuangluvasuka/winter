@@ -4,7 +4,8 @@ import numpy as np
 import tensorflow as tf
 
 from utils import time_string
-from models.mixture import gaussian_mixture_loss_fn, vonmises_mixture_loss_fn, masked_angular_mean_absolute_error
+from models.mixture import gaussian_mixture_loss_fn, vonmises_mixture_loss_fn, masked_angular_mean_absolute_error, \
+    independent_vonmises_mixture_loss_fn
 
 
 def create_checkpoint(args, model, optimizer, **kwargs):
@@ -54,6 +55,9 @@ def train(args, model, feeder, hparams):
   elif hparams.distribution == 'von_mises':
     loss_fn = vonmises_mixture_loss_fn(out_dim=hparams.dihedral_dim,
                                        num_mix=hparams.num_mixtures, use_tfp=hparams.use_tfp)
+  elif hparams.distribution == 'independent_von_mises':
+    loss_fn = independent_vonmises_mixture_loss_fn(out_dim=hparams.dihedral_dim,
+                                       num_mix=hparams.num_mixtures, use_tfp=hparams.use_tfp)
   else:
     raise ValueError("hparam.distribution has only two options: 'gaussian' or 'von_mises'.")
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
@@ -81,7 +85,6 @@ def train(args, model, feeder, hparams):
         with tf.summary.record_if(i == 0):
           loss = eval_step(model, data_dict, loss_fn)
         losses.append(loss)
-
       eval_loss_average = np.mean(losses) / hparams.batch_size_test
       tf.summary.scalar('loss', eval_loss_average)
 
