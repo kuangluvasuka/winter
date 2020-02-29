@@ -59,7 +59,7 @@ def train(args, model, feeder, hparams):
     loss_fn = independent_vonmises_mixture_loss_fn(out_dim=hparams.dihedral_dim,
                                        num_mix=hparams.num_mixtures, use_tfp=hparams.use_tfp)
   else:
-    raise ValueError("hparam.distribution has only two options: 'gaussian' or 'von_mises'.")
+    raise ValueError("Invalid value for hparam.distribution. Check hyperparameter settings.")
   optimizer = tf.optimizers.Adam(learning_rate=hparams.learning_rate)
   ckpt, manager = create_checkpoint(args, model, optimizer)
   summary_writer = create_summary(args.summary_dir, args.summary_off)
