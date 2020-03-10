@@ -43,8 +43,13 @@ class Pronet(tf.keras.Model):
       nade = RNadeMoIVM
     else:
       raise ValueError("hparam.distribution has only two options: 'gaussian' or 'von_mises'.")
+
+    if hp.bidirectional:
+      cond_dim = 2 * hp.rnn_units
+    else:
+      cond_dim = hp.rnn_units
     self._rnade = nade(hidden_dim=hp.autoregressive_unit,
-                       condition_dim=hp.rnn_units,
+                       condition_dim=cond_dim,
                        seq_length=hp.max_sequence_length,
                        output_dim=hp.dihedral_dim,
                        num_mixtures=hp.num_mixtures,

@@ -72,7 +72,8 @@ class Recurrent(Layer):
     if bidirectional:
       forward_cell = rnn_cls(units, return_sequences=True)
       backward_cell = rnn_cls(units, return_sequences=True, go_backwards=True)
-      self.layer = tf.keras.layers.Bidirectional(forward_cell, backward_cell, input_shape=(None, in_features))
+      self.layer = tf.keras.layers.Bidirectional(forward_cell, backward_layer=backward_cell,
+                                                 merge_mode='concat', input_shape=(None, in_features))
     else:
       self.layer = rnn_cls(units, return_sequences=True, input_shape=(None, in_features))
 
