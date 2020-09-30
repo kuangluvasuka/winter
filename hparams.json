@@ -6,6 +6,7 @@
     "shuffle_size": 1,
 
     "NUM_AMINO_ACIDS": 20,
+    "NUM_EVO_ENTRIES": 21,
     "dihedral_dim": 3,
     "max_sequence_length": 500,
 

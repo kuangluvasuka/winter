@@ -2,6 +2,9 @@ import numpy as np
 import json
 from datetime import datetime
 
+RAD_TO_DEG = 57.2957795131
+DEG_TO_RAD = 0.01745329251
+
 
 class Params():
     def __init__(self, json_path):
@@ -19,6 +22,14 @@ class Params():
     @property
     def dict(self):
         return self.__dict__
+
+
+def deg2rad(deg):
+  return deg * DEG_TO_RAD
+
+
+def rad2deg(rad):
+  return rad * RAD_TO_DEG
 
 
 def cartesian_coords_to_dihedral_angles(atomic_coords):

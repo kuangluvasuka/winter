@@ -94,10 +94,12 @@ class RNadeBase(Layer):
 
     self.W_enc = None
     self.b_enc = None
+    self.W_conv = None
+    self.V_conv = None
     self._act = None
     self._sample_fn = None
     self.rescaling = None
-    #self.concat = None
+    self.concat = None
 
   def call(self, x, z, is_sampling=False):
     if is_sampling:
@@ -120,7 +122,8 @@ class RNadeBase(Layer):
     if self.concat:
       x = tf.transpose(tf.concat([x, z], axis=-1), perm=[1, 0, 2])
     else:
-      x = tf.transpose(x, perm=[1, 0, 2])
+      # or gated
+      x = tf.matmul(x, self.W_conv) + z  #tf.matmul(z, self.V_conv)
 
     # init a_0
     a = tf.tile(self.b_enc, [batch_size, 1])
@@ -157,7 +160,7 @@ class RNadeBase(Layer):
       if self.concat:
         s_z = tf.concat([s, z[i]], axis=-1)
       else:
-        pass
+        s_z = tf.matmul(s, self.W_conv) + z[i]  #tf.matmul(z[i], self.V_conv)
 
       a = self.rescaling[i+1] * (a / self.rescaling[i] + tf.matmul(s_z, self.W_enc[i]))
       samples.append(s)
@@ -180,14 +183,14 @@ class RNadeBase(Layer):
 class RNadeMoG(RNadeBase):
   """Real Nade for mixture of multivariate Gaussian model."""
 
-  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, output_dim=3,
+  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, dihedral_dim=3,
                num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoG', **kwargs):
     """
     Args:
       - hidden_dim: Number of hidden units
       - condition_dim: Number of units from conditional vectors per time step
       - seq_length: Maximum length of input sequence (see hparams.json: max_sequence_length)
-      - output_dim: Dimension of output per time step, same as dihedral_dim=3
+      - dihedral_dim: Dimension of output per time step, default=3
       - num_mixtures: Number of mixing distributions
       - act: Activation unit for encoded hidden state
     """
@@ -195,19 +198,19 @@ class RNadeMoG(RNadeBase):
 
     self.concat = True
     if self.concat:
-      input_dim = output_dim + condition_dim
+      input_dim = dihedral_dim + condition_dim
       # NADE encoder
       self.W_enc = tf.Variable(tf.random.normal([seq_length, input_dim, hidden_dim]), name='w_enc')
       self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
 
       # mixture decoder
-      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_mean')
-      self.linear_sigma = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_sigma')
+      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
+      self.linear_sigma = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_sigma')
       self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
 
     self.rescaling = tf.Variable(
         [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
-    self._sample_fn = gaussian_mixture_sample_fn(out_dim=output_dim, num_mix=num_mixtures, use_tfp=use_tfp)
+    self._sample_fn = gaussian_mixture_sample_fn(out_dim=dihedral_dim, num_mix=num_mixtures, use_tfp=use_tfp)
     self._act = act
 
   def _get_mixture_coeff(self, i, a_i):
@@ -237,26 +240,31 @@ class RNadeMoG(RNadeBase):
 
 class RNadeMoIVM(RNadeBase):
   """Real Nade for mixture of independent multivariate Von Mises model."""
-  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, output_dim=3,
+  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, dihedral_dim=3,
                num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoIVM', **kwargs):
 
     super().__init__(name)
 
     self.concat = True
     if self.concat:
-      input_dim = output_dim + condition_dim
-      # NADE encoder
-      self.W_enc = tf.Variable(tf.random.normal([seq_length, input_dim, hidden_dim]), name='w_enc')
-      self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
+      input_dim = dihedral_dim + condition_dim
+    else:
+      input_dim = condition_dim
+      self.W_conv = tf.Variable(tf.random.normal([dihedral_dim, input_dim]), name='w_conv')
+      #self.V_conv = tf.Variable(tf.random.normal([input_dim, input_dim]), name='v_conv')
 
-      # mixture decoder
-      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_mean')
-      self.linear_kappa = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_kappa')
-      self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
+    # NADE encoder
+    self.W_enc = tf.Variable(tf.random.normal([seq_length, input_dim, hidden_dim]), name='w_enc')
+    self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
+
+    # mixture decoder
+    self.linear_mean = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
+    self.linear_kappa = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_kappa')
+    self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
 
     self.rescaling = tf.Variable(
         [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
-    self._sample_fn = independent_vonmises_mixture_sample_fn(out_dim=output_dim, num_mix=num_mixtures)
+    self._sample_fn = independent_vonmises_mixture_sample_fn(out_dim=dihedral_dim, num_mix=num_mixtures)
     self._act = act
 
   def _get_mixture_coeff(self, i, a_i):
@@ -271,7 +279,7 @@ class RNadeMoIVM(RNadeBase):
 class RNadeMoVM(RNadeBase):
   """Real Nade for mixture of multivariate Von Mises model."""
 
-  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, output_dim=3,
+  def __init__(self, hidden_dim, condition_dim=32, seq_length=500, dihedral_dim=3,
                num_mixtures=5, act=tf.nn.relu, use_tfp=False, name='RNadeMoVM', **kwargs):
 
     super().__init__(name)
@@ -280,20 +288,20 @@ class RNadeMoVM(RNadeBase):
 
     self.concat = True
     if self.concat:
-      input_dim = output_dim + condition_dim
+      input_dim = dihedral_dim + condition_dim
       # NADE encoder
       self.W_enc = tf.Variable(tf.random.normal([seq_length, input_dim, hidden_dim]), name='w_enc')
       self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
 
       # mixture decoder
-      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_mean')
-      self.linear_kappa = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_kappa')
-      self.linear_lambda = Addressable_Linear(seq_length, hidden_dim, output_dim * num_mixtures, name='linear_lambda')
+      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
+      self.linear_kappa = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_kappa')
+      self.linear_lambda = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_lambda')
       self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
 
     self.rescaling = tf.Variable(
         [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
-    self._sample_fn = vonmises_mixture_sample_fn(out_dim=output_dim, num_mix=num_mixtures,
+    self._sample_fn = vonmises_mixture_sample_fn(out_dim=dihedral_dim, num_mix=num_mixtures,
                                                  burn_in=burn_in, avg_count=avg_count)
     self._act = act
 

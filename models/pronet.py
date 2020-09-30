@@ -26,15 +26,15 @@ class Pronet(tf.keras.Model):
                                   initializer='normal')
       in_features = hp.embedding_dim
 
-    # Initializing RNN layer
+    # Initializing encoder
     if hp.use_evolutionary:
-      in_features += hp.NUM_EVOL
+      in_features += hp.NUM_EVO_ENTRIES
     self._recurrent = Recurrent(units=hp.rnn_units,
                                 in_features=in_features,
                                 rnn_class='gru',
                                 bidirectional=hp.bidirectional)
 
-    # Initializing RNADE layer
+    # Initializing decoder
     if hp.distribution == 'gaussian':
       nade = RNadeMoG
     elif hp.distribution == 'von_mises':
@@ -42,7 +42,7 @@ class Pronet(tf.keras.Model):
     elif hp.distribution == 'independent_von_mises':
       nade = RNadeMoIVM
     else:
-      raise ValueError("hparam.distribution has only two options: 'gaussian' or 'von_mises'.")
+      raise ValueError("hparam.distribution has 3 options: 'gaussian' | 'von_mises' | 'independent_von_mises'.")
 
     if hp.bidirectional:
       cond_dim = 2 * hp.rnn_units
@@ -51,7 +51,7 @@ class Pronet(tf.keras.Model):
     self._rnade = nade(hidden_dim=hp.autoregressive_unit,
                        condition_dim=cond_dim,
                        seq_length=hp.max_sequence_length,
-                       output_dim=hp.dihedral_dim,
+                       dihedral_dim=hp.dihedral_dim,
                        num_mixtures=hp.num_mixtures,
                        use_tfp=hp.use_tfp,
                        burn_in=hp.burn_in,
