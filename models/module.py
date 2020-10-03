@@ -24,20 +24,25 @@ class Embedding(Layer):
     return tf.nn.embedding_lookup(self._embedding_matrix, x)
 
 
-class Addressable_Linear(Layer):
+class IndexLinear(Layer):
   """
     Linear layer with shape=[a,b,c] where the first dimension can be indexed in computation.
   """
-  # TODO:
-  #def _init_net(self, ):
-  #  """Self implementation of lazy building mechanism, or rewrite Layer's build() method."""
-  #  pass
 
-  def __init__(self, seq_length, in_features, out_features, act=lambda x: x, name='linear'):
+  def __init__(self, seq_length, out_features, act=lambda x: x, name='linear'):
     super().__init__(name=name)
-    self.w = tf.Variable(tf.random.normal([seq_length, in_features, out_features]), name='w_' + name)
-    self.b = tf.Variable(tf.zeros([seq_length, 1, out_features]), name='b_' + name)
+    self._name = name
+    self.seq_length = seq_length
+    self.out_features = out_features
     self._act = act
+
+  def build(self, in_features):
+    self.w = tf.Variable(
+        tf.random.normal([self.seq_length, in_features[-1], self.out_features]), name='w_' + self._name,
+        trainable=True)
+    self.b = tf.Variable(
+        tf.zeros([self.seq_length, 1, self.out_features]), name='b_' + self._name,
+        trainable=True)
 
   def __getitem__(self, idx):
     return (self.w[idx], self.b[idx])
@@ -204,9 +209,9 @@ class RNadeMoG(RNadeBase):
       self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
 
       # mixture decoder
-      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
-      self.linear_sigma = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_sigma')
-      self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
+      self.linear_mean = IndexLinear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
+      self.linear_sigma = IndexLinear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_sigma')
+      self.linear_pi = IndexLinear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
 
     self.rescaling = tf.Variable(
         [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
@@ -258,9 +263,9 @@ class RNadeMoIVM(RNadeBase):
     self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
 
     # mixture decoder
-    self.linear_mean = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
-    self.linear_kappa = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_kappa')
-    self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
+    self.linear_mean = IndexLinear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
+    self.linear_kappa = IndexLinear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_kappa')
+    self.linear_pi = IndexLinear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
 
     self.rescaling = tf.Variable(
         [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
@@ -294,10 +299,10 @@ class RNadeMoVM(RNadeBase):
       self.b_enc = tf.Variable(tf.zeros([1, hidden_dim]), name='b_enc')
 
       # mixture decoder
-      self.linear_mean = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
-      self.linear_kappa = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_kappa')
-      self.linear_lambda = Addressable_Linear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_lambda')
-      self.linear_pi = Addressable_Linear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
+      self.linear_mean = IndexLinear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_mean')
+      self.linear_kappa = IndexLinear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_kappa')
+      self.linear_lambda = IndexLinear(seq_length, hidden_dim, dihedral_dim * num_mixtures, name='linear_lambda')
+      self.linear_pi = IndexLinear(seq_length, hidden_dim, num_mixtures, name='linear_pi')
 
     self.rescaling = tf.Variable(
         [1 / float(i) if i > 0 else 1.0 for i in range(seq_length + 1)], trainable=False, name='rescaling_factor')
