@@ -114,7 +114,7 @@ class RNadeBase(Layer):
   def _cal_prob(self, x, z):
     """
     Args:
-      - x: Dihedral angles, shape=[B, L, num_dihedrals]
+      - x: Dihedral angles, shape=[B, L, dihedral_dim]
       - z: Conditional vectors, shape=[B, L, condition_dim]
 
     Returns:
@@ -129,6 +129,7 @@ class RNadeBase(Layer):
     else:
       # or gated
       x = tf.matmul(x, self.W_conv) + z  #tf.matmul(z, self.V_conv)
+      x = tf.transpose(x, perm=[1, 0, 2])
 
     # init a_0
     a = tf.tile(self.b_enc, [batch_size, 1])
@@ -149,7 +150,7 @@ class RNadeBase(Layer):
       - z: [B, L, condition_dim]
 
     Returns:
-      - samples: [B, L, num_dihedrals]
+      - samples: [B, L, dihedral_dim]
     """
     batch_size, time_steps, _ = tf.shape(z)
     z = tf.transpose(z, perm=[1, 0, 2])
