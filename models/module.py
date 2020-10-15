@@ -29,20 +29,21 @@ class IndexLinear(Layer):
     Linear layer with shape=[a,b,c] where the first dimension can be indexed in computation.
   """
 
-  def __init__(self, seq_length, out_features, act=lambda x: x, name='linear'):
+  def __init__(self, seq_length, output_dim, act=lambda x: x, name='linear'):
     super().__init__(name=name)
     self._name = name
     self.seq_length = seq_length
-    self.out_features = out_features
+    self.output_dim = output_dim
     self._act = act
 
-  def build(self, in_features):
+  def build(self, input_shapes):
     self.w = tf.Variable(
-        tf.random.normal([self.seq_length, in_features[-1], self.out_features]), name='w_' + self._name,
+        tf.random.normal([self.seq_length, input_shapes[-1], self.output_dim]), name='w_' + self._name,
         trainable=True)
     self.b = tf.Variable(
-        tf.zeros([self.seq_length, 1, self.out_features]), name='b_' + self._name,
+        tf.zeros([self.seq_length, 1, self.output_dim]), name='b_' + self._name,
         trainable=True)
+    self.built = True
 
   def __getitem__(self, idx):
     return (self.w[idx], self.b[idx])
@@ -53,11 +54,11 @@ class IndexLinear(Layer):
 
 
 class Recurrent(Layer):
-  def __init__(self, units, in_features, rnn_class='gru', bidirectional=False, name='recurrent'):
+  def __init__(self, units, input_dim, rnn_class='gru', bidirectional=False, name='recurrent'):
     """
     Args:
       - units: int, dimension of output vectors
-      - in_features: int, dimension of input features
+      - input_dim: int, dimension of input features
       - rnn_class: str, recurrent unit to use. {'vanilla', 'lstm', 'gru'}
 
     """
@@ -78,9 +79,9 @@ class Recurrent(Layer):
       forward_cell = rnn_cls(units, return_sequences=True)
       backward_cell = rnn_cls(units, return_sequences=True, go_backwards=True)
       self.layer = tf.keras.layers.Bidirectional(forward_cell, backward_layer=backward_cell,
-                                                 merge_mode='concat', input_shape=(None, in_features))
+                                                 merge_mode='concat', input_shape=(None, input_dim))
     else:
-      self.layer = rnn_cls(units, return_sequences=True, input_shape=(None, in_features))
+      self.layer = rnn_cls(units, return_sequences=True, input_shape=(None, input_dim))
 
   def call(self, x, mask, evol=None):
     return self.layer(x, mask=mask)
@@ -120,7 +121,7 @@ class RNadeBase(Layer):
     Returns:
       - logits: Parameterized coefficients of the mixture model, shape=[B, L, model dependent dim]
     """
-    batch_size, time_steps, _ = tf.shape(x)
+    batch_size, seq_len, _ = tf.shape(x)
 
     # conditional nade
     # TODO: is there any other ways to combine x and z?
@@ -135,7 +136,7 @@ class RNadeBase(Layer):
     a = tf.tile(self.b_enc, [batch_size, 1])
     logits = []
 
-    for i in tf.range(time_steps):
+    for i in tf.range(seq_len):
       mixture_coeff = self._get_mixture_coeff(i, a)
       logits.append(mixture_coeff)
       a = self.rescaling[i+1] * (a / self.rescaling[i] + tf.matmul(x[i], self.W_enc[i]))
@@ -152,12 +153,12 @@ class RNadeBase(Layer):
     Returns:
       - samples: [B, L, dihedral_dim]
     """
-    batch_size, time_steps, _ = tf.shape(z)
+    batch_size, seq_len, _ = tf.shape(z)
     z = tf.transpose(z, perm=[1, 0, 2])
     samples = []
     a = tf.tile(self.b_enc, [batch_size, 1])
 
-    for i in tf.range(time_steps):
+    for i in tf.range(seq_len):
       mixture_coeff = self._get_mixture_coeff(i, a)
       s = self._sample_fn(mixture_coeff)                # [B, 3]
 
